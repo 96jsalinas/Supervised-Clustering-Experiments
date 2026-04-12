@@ -1,0 +1,151 @@
+# Reproduces the R reference implementation (SHAP_preprocessing.Rmd),
+# Synthetic Example I (supervisor: Pablo Morala).
+#
+# Key differences vs cooper_dbscan that cannot be bridged in Python:
+#   - R uses XGBoost (multi:softprob, lr=0.2, nrounds=100); we use LightGBM.
+#     SHAP values will differ because the underlying model differs.
+#   - R's umap package has its own implementation; Python umap-learn may
+#     produce different embeddings even with the same parameters and seed.
+#
+# Everything else is reproduced exactly.
+
+data:
+  n_samples: 1000
+  n_features: 50
+  n_informative: 5
+  n_redundant: 0
+  n_repeated: 0
+  n_classes: 2
+  n_clusters_per_class: 3
+  shuffle: false
+  random_state: 142
+  flip_y: 0
+  hypercube: true
+  class_sep: 1.9
+  # shift and scale are drawn from np.random.seed(142) before make_classification,
+  # reproducing: shift = np.random.random(50)*3 - 1.5, scale = np.random.random(50)*2
+  shift:
+    - 1.20618457
+    - 0.17342261
+    - 0.46795412
+    - 0.99741424
+    - -0.90034744
+    - -1.11823723
+    - 0.81431732
+    - -0.20313434
+    - -0.34415331
+    - 0.85093011
+    - 0.85659486
+    - -1.01157418
+    - -1.15466
+    - -0.50243535
+    - 0.30472035
+    - 1.13340701
+    - 0.34463166
+    - -0.2279883
+    - 1.37353882
+    - 1.0622534
+    - 0.82243583
+    - 1.12688523
+    - -1.26493427
+    - -1.40412383
+    - 0.61872738
+    - 0.15891047
+    - 1.06580247
+    - 1.36232242
+    - -0.07507162
+    - 0.14450221
+    - 0.70357606
+    - 0.11589557
+    - 0.73534248
+    - 0.23551635
+    - -0.97154774
+    - 0.7724079
+    - 1.34470899
+    - 1.13322366
+    - 1.066546
+    - -0.59571735
+    - -1.17098577
+    - 1.21819819
+    - 1.25993986
+    - -0.24814242
+    - -1.41181305
+    - -1.49162356
+    - -1.40178247
+    - -1.15241385
+    - 1.04348885
+    - -0.35705736
+  scale:
+    - 1.00487276
+    - 0.92289955
+    - 0.66538355
+    - 0.85336512
+    - 0.10957624
+    - 1.98873431
+    - 0.790859
+    - 0.47902873
+    - 1.07550618
+    - 1.77905445
+    - 1.14575099
+    - 0.50035301
+    - 0.7709212
+    - 1.5454289
+    - 0.70088985
+    - 0.88781859
+    - 0.82820643
+    - 1.07759479
+    - 1.83638161
+    - 0.52652593
+    - 1.55618916
+    - 1.19920261
+    - 0.47598482
+    - 1.07647398
+    - 0.71556335
+    - 0.8265403
+    - 1.01070039
+    - 0.07177057
+    - 0.60767141
+    - 1.74553701
+    - 1.98083225
+    - 0.87902867
+    - 1.62980923
+    - 0.56032482
+    - 0.14039433
+    - 1.85279178
+    - 1.37784742
+    - 0.15284278
+    - 1.3579488
+    - 1.4106086
+    - 0.27495953
+    - 1.78470936
+    - 1.89472574
+    - 0.17099735
+    - 1.17423704
+    - 0.78661519
+    - 0.90254509
+    - 0.99085513
+    - 1.89401625
+    - 1.16482411
+
+attribution:
+  method: shap_lgbm
+  target_class: 1
+  random_state: 42          # R uses set.seed(42) before XGBoost
+  params: {}
+
+reduction:
+  method: umap
+  random_state: 42          # R uses set.seed(42); affects UMAP via R's RNG
+  params:
+    n_components: 2
+    n_neighbors: 15          # R umap package default (vs 200 in Cooper)
+    min_dist: 0.1            # R umap package default (vs 0 in Cooper)
+
+clustering:
+  method: hdbscan
+  params:
+    min_cluster_size: 70    # minPts=70 as in R reference Example I
+
+evaluation:
+  external: [ari, nmi, ami]
+  internal: [silhouette, davies_bouldin, calinski_harabasz]
