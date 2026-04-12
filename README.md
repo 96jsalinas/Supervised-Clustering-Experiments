@@ -2,11 +2,12 @@
 
 Systematic evaluation of a three-step **supervised clustering** pipeline for subgroup discovery, as part of Josu Salinas's Master's Thesis (TFM) at UC3M.
 
-The pipeline takes raw tabular data through three stages:
+The pipeline takes raw tabular data through four stages:
 
-1. **Feature attribution** -- train a supervised model and extract per-sample feature importances (e.g. SHAP values via LightGBM).
-2. **Dimensionality reduction** -- project the attribution matrix to 2D (e.g. UMAP).
-3. **Clustering** -- identify subgroups in the reduced space (e.g. DBSCAN, HDBSCAN).
+1. **Model training** -- train a supervised classifier (e.g. LightGBM, MLP).
+2. **Feature attribution** -- use the trained model to extract per-sample feature importances (e.g. SHAP, LRP). The model is shared across attribution methods so comparisons are fair.
+3. **Dimensionality reduction** -- project the attribution matrix to 2D (e.g. UMAP).
+4. **Clustering** -- identify subgroups in the reduced space (e.g. DBSCAN, HDBSCAN).
 
 The framework is config-driven: each experiment is defined by a YAML file specifying the method and hyperparameters for every step. Adding a new method requires one Python file and one line in the registry.
 
@@ -23,7 +24,8 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 ├── pipeline/                   # Modular pipeline components
 │   ├── base.py                 # Abstract base classes
 │   ├── registry.py             # Maps config method names to Python classes
-│   ├── runner.py               # Orchestrates attribution -> reduction -> clustering
+│   ├── runner.py               # Orchestrates model -> attribution -> reduction -> clustering
+│   ├── models/                 # LightGBM (implemented), MLP (stub)
 │   ├── attribution/            # SHAP (implemented), LRP & LIME (stubs)
 │   ├── reduction/              # UMAP (implemented), PCA, t-SNE & PaCMAP (stubs)
 │   └── clustering/             # DBSCAN & HDBSCAN (implemented), k-means (stub)

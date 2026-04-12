@@ -1,4 +1,7 @@
-from pipeline.attribution.shap_lgbm import SHAPLGBMAttributor
+from pipeline.models.lightgbm_model import LightGBMModel
+from pipeline.models.mlp import MLPModel
+
+from pipeline.attribution.shap import SHAPAttributor
 from pipeline.attribution.lrp import LRPAttributor
 from pipeline.attribution.lime import LIMEAttributor
 
@@ -11,8 +14,13 @@ from pipeline.clustering.dbscan_clusterer import DBSCANClusterer
 from pipeline.clustering.hdbscan_clusterer import HDBSCANClusterer
 from pipeline.clustering.kmeans_clusterer import KMeansClusterer
 
+MODELS = {
+    "lightgbm": LightGBMModel,
+    "mlp": MLPModel,
+}
+
 ATTRIBUTORS = {
-    "shap_lgbm": SHAPLGBMAttributor,
+    "shap": SHAPAttributor,
     "lrp": LRPAttributor,
     "lime": LIMEAttributor,
 }

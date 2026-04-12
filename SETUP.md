@@ -37,10 +37,11 @@ The script resolves all paths relative to its own location, so it can be called 
 
 ## Available configs
 
-| Config                    | Purpose                                    |
-|---------------------------|--------------------------------------------|
-| `cooper_dbscan.yaml`      | Reproduce Cooper's blogpost as a sanity check |
-| `hdbscan_baseline.yaml`   | Official thesis baseline (HDBSCAN)         |
+| Config                      | Purpose                                       |
+|-----------------------------|-----------------------------------------------|
+| `cooper_dbscan.yaml`        | Reproduce Cooper's blogpost as a sanity check |
+| `hdbscan_baseline.yaml`     | Official thesis baseline (HDBSCAN)            |
+| `r_reference_example1.yaml` | Reproduce supervisor's R reference (Example I)|
 
 ## Creating a new experiment
 
@@ -52,9 +53,12 @@ Method names available in the config (registered in `pipeline/registry.py`):
 
 | Step          | Implemented           | Stubs (not yet working)       |
 |---------------|-----------------------|-------------------------------|
-| Attribution   | `shap_lgbm`           | `lrp`, `lime`                 |
+| Model         | `lightgbm`            | `mlp`                         |
+| Attribution   | `shap`                | `lrp`, `lime`                 |
 | Reduction     | `umap`                | `pca`, `tsne`, `pacmap`       |
 | Clustering    | `dbscan`, `hdbscan`   | `kmeans`                      |
+
+Note that `model` and `attribution` are separate config sections. The model is trained once and passed to the attribution method, so SHAP and LRP can be evaluated on the same model for a fair comparison.
 
 ## Output structure
 

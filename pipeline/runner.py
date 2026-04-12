@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
 
-from pipeline.registry import ATTRIBUTORS, REDUCERS, CLUSTERERS
+from pipeline.registry import MODELS, ATTRIBUTORS, REDUCERS, CLUSTERERS
 
 
 @dataclass
@@ -18,38 +18,43 @@ class RunResult:
 
 
 class PipelineRunner:
-    """Orchestrates the three-step supervised clustering pipeline."""
+    """Orchestrates the four-step supervised clustering pipeline:
+    model training -> attribution -> dimensionality reduction -> clustering.
+    """
 
     def __init__(self, config: dict):
+        model_cfg = config["model"]
         attr_cfg = config["attribution"]
         red_cfg = config["reduction"]
         clust_cfg = config["clustering"]
 
-        attr_method = attr_cfg["method"]
-        red_method = red_cfg["method"]
-        clust_method = clust_cfg["method"]
+        for key, registry, label in [
+            (model_cfg["method"], MODELS, "model"),
+            (attr_cfg["method"], ATTRIBUTORS, "attribution"),
+            (red_cfg["method"], REDUCERS, "reduction"),
+            (clust_cfg["method"], CLUSTERERS, "clustering"),
+        ]:
+            if key not in registry:
+                raise ValueError(f"Unknown {label} method: '{key}'")
 
-        if attr_method not in ATTRIBUTORS:
-            raise ValueError(f"Unknown attribution method: {attr_method}")
-        if red_method not in REDUCERS:
-            raise ValueError(f"Unknown reduction method: {red_method}")
-        if clust_method not in CLUSTERERS:
-            raise ValueError(f"Unknown clustering method: {clust_method}")
-
-        self.attributor = ATTRIBUTORS[attr_method](attr_cfg)
-        self.reducer = REDUCERS[red_method](red_cfg)
-        self.clusterer = CLUSTERERS[clust_method](clust_cfg)
+        self.model = MODELS[model_cfg["method"]](model_cfg)
+        self.attributor = ATTRIBUTORS[attr_cfg["method"]](attr_cfg)
+        self.reducer = REDUCERS[red_cfg["method"]](red_cfg)
+        self.clusterer = CLUSTERERS[clust_cfg["method"]](clust_cfg)
 
     def run(
         self, X: np.ndarray, y_class: np.ndarray, y_subcluster: np.ndarray
     ) -> RunResult:
-        """Execute: attribution -> reduction -> clustering.
+        """Execute: model training -> attribution -> reduction -> clustering.
 
         Also clusters directly in the full attribution space (no DR)
         to serve as a comparison baseline.
         """
+        print("  Training model...")
+        self.model.fit(X, y_class)
+
         print("  Computing attributions...")
-        attributions = self.attributor.fit_transform(X, y_class)
+        attributions = self.attributor.fit_transform(X, y_class, self.model)
 
         print("  Reducing dimensions...")
         embedding_2d = self.reducer.fit_transform(attributions)

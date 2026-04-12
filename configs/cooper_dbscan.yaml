@@ -9,11 +9,14 @@ data:
   shuffle: false
   random_state: 42        # Cooper did not set this; we add it for reproducibility
 
-attribution:
-  method: shap_lgbm
-  target_class: 1
+model:
+  method: lightgbm
   random_state: 42        # LGBMClassifier random_state
   params: {}              # LGBMClassifier defaults (as in Cooper)
+
+attribution:
+  method: shap
+  target_class: 1
 
 reduction:
   method: umap

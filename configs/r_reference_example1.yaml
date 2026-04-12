@@ -127,11 +127,14 @@ data:
     - 1.89401625
     - 1.16482411
 
-attribution:
-  method: shap_lgbm
-  target_class: 1
+model:
+  method: lightgbm
   random_state: 42          # R uses set.seed(42) before XGBoost
   params: {}
+
+attribution:
+  method: shap
+  target_class: 1
 
 reduction:
   method: umap

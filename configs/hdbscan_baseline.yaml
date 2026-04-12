@@ -9,11 +9,14 @@ data:
   shuffle: false
   random_state: 42
 
-attribution:
-  method: shap_lgbm
-  target_class: 1
+model:
+  method: lightgbm
   random_state: 42
   params: {}
+
+attribution:
+  method: shap
+  target_class: 1
 
 reduction:
   method: umap
