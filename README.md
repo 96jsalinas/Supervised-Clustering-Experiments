@@ -30,7 +30,7 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 │   ├── reduction/              # UMAP (implemented), PCA, t-SNE & PaCMAP (stubs)
 │   └── clustering/             # DBSCAN & HDBSCAN (implemented), k-means (stub)
 ├── data/
-│   └── synthetic.py            # Data generation via sklearn.make_classification
+│   └── synthetic.py            # Data generation via sklearn.make_blobs
 ├── evaluation/
 │   ├── metrics.py              # External (ARI, NMI, AMI) and internal metrics
 │   └── figures.py              # UMAP scatter plots, SHAP importance bar chart

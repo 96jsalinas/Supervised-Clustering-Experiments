@@ -41,7 +41,7 @@ The script resolves all paths relative to its own location, so it can be called 
 |-----------------------------|-----------------------------------------------|
 | `cooper_dbscan.yaml`        | Reproduce Cooper's blogpost as a sanity check |
 | `hdbscan_baseline.yaml`     | Official thesis baseline (HDBSCAN)            |
-| `r_reference_example1.yaml` | Reproduce supervisor's R reference (Example I)|
+| `r_reference_example1.yaml` | High cluster-separation scenario (cf. R reference Example I) |
 
 ## Creating a new experiment
 

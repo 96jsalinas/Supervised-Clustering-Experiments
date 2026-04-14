@@ -27,6 +27,6 @@ Outstanding work for the experimental framework. Items are grouped by category.
 
 ## Experiment design
 
-- [ ] **Multiple synthetic datasets** -- vary `n_informative` and `n_clusters_per_class` as specified in the thesis methodology. Create configs for each scenario.
+- [ ] **Multiple synthetic datasets** -- vary `n_informative` and `n_clusters` (and optionally `cluster_std`) to test different separation and complexity scenarios. Create configs for each scenario.
 - [ ] **Stability analysis** -- run the same config with multiple seeds and report metric variance.
 - [ ] **Real-world dataset** -- if time permits, apply the pipeline to a real dataset.
