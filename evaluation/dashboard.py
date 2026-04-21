@@ -38,6 +38,48 @@ def load_runs(results_dir: Path) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+def _scatter_into(ax, embedding: np.ndarray, labels: np.ndarray, title: str):
+    for lbl in np.unique(labels):
+        mask = labels == lbl
+        marker = "x" if lbl == -1 else "o"
+        alpha = 0.3 if lbl == -1 else 0.6
+        ax.scatter(embedding[mask, 0], embedding[mask, 1],
+                   marker=marker, alpha=alpha, s=6)
+    ax.set_title(title, fontsize=8)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+
+def save_embedding_grid(results_dir: Path, out_dir: Path) -> None:
+    """One scatter subplot per run, colored by discovered cluster labels."""
+    run_dirs = [d for d in sorted(results_dir.iterdir())
+                if (d / "arrays.npz").is_file()]
+    if not run_dirs:
+        print("  no arrays.npz files found, skipping embedding_grid")
+        return
+
+    n = len(run_dirs)
+    ncols = min(4, n)
+    nrows = int(np.ceil(n / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.2 * ncols, 3.0 * nrows),
+                             squeeze=False)
+
+    for idx, run_dir in enumerate(run_dirs):
+        ax = axes[idx // ncols][idx % ncols]
+        data = np.load(run_dir / "arrays.npz")
+        _scatter_into(ax, data["embedding_2d"], data["cluster_labels_2d"],
+                      run_dir.name)
+
+    for j in range(len(run_dirs), nrows * ncols):
+        axes[j // ncols][j % ncols].axis("off")
+
+    fig.suptitle("2D embedding of attributions — discovered clusters",
+                 fontsize=11)
+    fig.tight_layout()
+    fig.savefig(out_dir / "embedding_grid.png", dpi=150)
+    plt.close(fig)
+
+
 def save_metrics_table(all_metrics: pd.DataFrame, out_dir: Path) -> None:
     """Dump the combined metrics table as CSV and as a rendered PNG."""
     csv_path = out_dir / "metrics_table.csv"
@@ -91,6 +133,9 @@ def main():
 
     print("Writing metrics table")
     save_metrics_table(all_metrics, out_dir)
+
+    print("Writing embedding grid")
+    save_embedding_grid(results_dir, out_dir)
 
     print(f"Done. Outputs in {out_dir}")
 
