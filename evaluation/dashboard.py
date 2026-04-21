@@ -80,6 +80,50 @@ def save_embedding_grid(results_dir: Path, out_dir: Path) -> None:
     plt.close(fig)
 
 
+def save_metric_bars(all_metrics: pd.DataFrame, out_dir: Path) -> None:
+    """Bar chart per external metric (ARI, NMI, AMI) grouped by run.
+
+    Within each run, the two spaces (2D embedding vs full attribution)
+    are shown as adjacent bars so the effect of DR is visible at a glance.
+    """
+    metrics_to_plot = ["ari", "nmi", "ami"]
+    spaces = ["embedding_2d", "full_attribution"]
+
+    runs = list(all_metrics["run"].drop_duplicates())
+    fig, axes = plt.subplots(len(metrics_to_plot), 1,
+                             figsize=(max(8, 0.5 * len(runs)), 9),
+                             sharex=True)
+    if len(metrics_to_plot) == 1:
+        axes = [axes]
+
+    x = np.arange(len(runs))
+    bar_w = 0.4
+
+    for ax, metric in zip(axes, metrics_to_plot):
+        for offset, space in zip([-bar_w / 2, bar_w / 2], spaces):
+            values = []
+            for run in runs:
+                row = all_metrics[
+                    (all_metrics["run"] == run) & (all_metrics["space"] == space)
+                ]
+                values.append(float(row[metric].iloc[0]) if len(row) else np.nan)
+            ax.bar(x + offset, values, width=bar_w, label=space)
+
+        ax.set_ylabel(metric.upper())
+        ax.set_ylim(0, 1)
+        ax.axhline(0, color="black", linewidth=0.5)
+        ax.legend(fontsize=8, loc="upper right")
+
+    axes[-1].set_xticks(x)
+    axes[-1].set_xticklabels(runs, rotation=45, ha="right")
+
+    fig.suptitle("External metrics per run (embedding vs full attribution)",
+                 fontsize=11)
+    fig.tight_layout()
+    fig.savefig(out_dir / "metric_bars.png", dpi=150)
+    plt.close(fig)
+
+
 def save_metrics_table(all_metrics: pd.DataFrame, out_dir: Path) -> None:
     """Dump the combined metrics table as CSV and as a rendered PNG."""
     csv_path = out_dir / "metrics_table.csv"
@@ -136,6 +180,9 @@ def main():
 
     print("Writing embedding grid")
     save_embedding_grid(results_dir, out_dir)
+
+    print("Writing metric bars")
+    save_metric_bars(all_metrics, out_dir)
 
     print(f"Done. Outputs in {out_dir}")
 
