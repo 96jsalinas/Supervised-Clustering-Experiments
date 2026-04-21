@@ -116,8 +116,8 @@ def save_per_cluster_shap_profile(result: RunResult, figures_dir: Path):
     n = len(unique)
     ncols = min(3, n)
     nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 2.5 * nrows),
-                             squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 2.8 * nrows),
+                             squeeze=False, sharey=True)
 
     for idx, cluster in enumerate(unique):
         ax = axes[idx // ncols][idx % ncols]
