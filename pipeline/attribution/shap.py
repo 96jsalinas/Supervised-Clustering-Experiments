@@ -43,7 +43,10 @@ class SHAPAttributor(BaseAttributor):
         if values.ndim == 3:
             return values[:, :, target_class]
         if values.ndim == 2:
-            return values
+            # Binary tree models return the class-1 SHAP values directly.
+            # For class-0 attributions, flip the sign (SHAP values sum to
+            # zero across the two classes in binary classification).
+            return values if target_class == 1 else -values
         raise ValueError(
             f"Unexpected SHAP output shape: {values.shape}. Expected 2 or 3 dims."
         )
