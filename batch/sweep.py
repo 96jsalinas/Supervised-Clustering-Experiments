@@ -9,11 +9,11 @@ Usage:
 
 import argparse
 import itertools
-import shutil
 import sys
 from copy import deepcopy
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +26,12 @@ from evaluation.figures import save_all_figures
 
 
 def _build_step_config(step_spec: dict, method: str) -> dict:
-    """Merge `common` and per-method overrides for one pipeline step."""
+    """Merge `common` and per-method overrides for one pipeline step.
+
+    The merge is shallow: if both `common` and `per_method[method]`
+    define the same key (e.g. `params:`), the per-method value
+    replaces the common value wholesale.
+    """
     cfg = {"method": method}
     cfg.update(deepcopy(step_spec.get("common", {})))
     cfg.update(deepcopy(step_spec.get("per_method", {}).get(method, {})))
@@ -62,6 +67,12 @@ def run_one(run_name: str, run_cfg: dict, results_root: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     figures_dir = output_dir / "figures"
 
+    # Clean stale PNGs so a rename upstream does not leave behind
+    # obsolete figures from a previous run.
+    if figures_dir.exists():
+        for stale in figures_dir.glob("*.png"):
+            stale.unlink()
+
     with open(output_dir / "config.yaml", "w") as f:
         yaml.safe_dump(run_cfg, f, sort_keys=False)
 
@@ -76,7 +87,6 @@ def run_one(run_name: str, run_cfg: dict, results_root: Path) -> None:
     metrics_df = compute_all_metrics(result)
     metrics_df.to_csv(output_dir / "metrics.csv", index=False)
 
-    import numpy as np
     np.savez(
         output_dir / "arrays.npz",
         embedding_2d=result.embedding_2d,
