@@ -4,8 +4,8 @@ Outstanding work for the experimental framework. Items are grouped by category.
 
 ## Pipeline methods to implement
 
-- [ ] **MLP model** (`pipeline/models/mlp.py`) -- Multi-layer perceptron classifier. Required before LRP can be implemented, as LRP is defined for neural networks. Decide on PyTorch vs TensorFlow.
-- [ ] **LRP attributor** (`pipeline/attribution/lrp.py`) -- Layer-wise Relevance Propagation. Receives a pre-trained MLP model via the shared model interface; no model training inside the attributor.
+- [x] **MLP model** (`pipeline/models/mlp.py`) -- PyTorch Linear+ReLU stack, now the thesis baseline.
+- [x] **LRP attributor** (`pipeline/attribution/lrp.py`) -- Layer-wise Relevance Propagation via zennit.
 - [ ] **LIME attributor** (`pipeline/attribution/lime.py`) -- Local Interpretable Model-agnostic Explanations.
 - [ ] **PCA reducer** (`pipeline/reduction/pca_reducer.py`) -- Linear baseline for dimensionality reduction.
 - [ ] **t-SNE reducer** (`pipeline/reduction/tsne_reducer.py`) -- Nonlinear DR, useful as a comparison but poor for downstream clustering.

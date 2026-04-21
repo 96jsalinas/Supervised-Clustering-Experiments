@@ -4,7 +4,7 @@ Systematic evaluation of a three-step **supervised clustering** pipeline for sub
 
 The pipeline takes raw tabular data through four stages:
 
-1. **Model training** -- train a supervised classifier (e.g. LightGBM, MLP).
+1. **Model training** -- train a supervised classifier. The baseline is an MLP (PyTorch); LightGBM is available as an alternative.
 2. **Feature attribution** -- use the trained model to extract per-sample feature importances (e.g. SHAP, LRP). The model is shared across attribution methods so comparisons are fair.
 3. **Dimensionality reduction** -- project the attribution matrix to 2D (e.g. UMAP).
 4. **Clustering** -- identify subgroups in the reduced space (e.g. DBSCAN, HDBSCAN).
@@ -19,14 +19,16 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 .
 ├── run_experiment.py           # CLI entry point
 ├── configs/                    # YAML experiment configs
-│   ├── cooper_dbscan.yaml      # Cooper blogpost reproduction (sanity check)
-│   └── hdbscan_baseline.yaml   # Official thesis baseline
+│   ├── cooper_dbscan.yaml      # Cooper blogpost reproduction (sanity check, LightGBM)
+│   ├── hdbscan_baseline.yaml   # LightGBM+SHAP+UMAP+HDBSCAN reference
+│   ├── mlp_baseline.yaml       # Thesis baseline: MLP+SHAP+UMAP+HDBSCAN
+│   └── mlp_lrp.yaml            # MLP+LRP+UMAP+HDBSCAN
 ├── pipeline/                   # Modular pipeline components
 │   ├── base.py                 # Abstract base classes
 │   ├── registry.py             # Maps config method names to Python classes
 │   ├── runner.py               # Orchestrates model -> attribution -> reduction -> clustering
-│   ├── models/                 # LightGBM (implemented), MLP (stub)
-│   ├── attribution/            # SHAP (implemented), LRP & LIME (stubs)
+│   ├── models/                 # MLP & LightGBM (implemented)
+│   ├── attribution/            # SHAP & LRP (implemented), LIME (stub)
 │   ├── reduction/              # UMAP (implemented), PCA, t-SNE & PaCMAP (stubs)
 │   └── clustering/             # DBSCAN & HDBSCAN (implemented), k-means (stub)
 ├── data/
@@ -46,12 +48,12 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 See [SETUP.md](SETUP.md) for full setup instructions. In short:
 
 ```bash
-pip install lightgbm shap umap-learn hdbscan scikit-learn pandas matplotlib seaborn pyyaml
-python run_experiment.py configs/cooper_dbscan.yaml
+pip install lightgbm shap umap-learn hdbscan scikit-learn pandas matplotlib seaborn pyyaml torch zennit
+python run_experiment.py configs/mlp_baseline.yaml
 ```
 
-Results appear in `results/cooper_dbscan/`.
+Results appear in `results/mlp_baseline/`.
 
 ## Current status
 
-The baseline pipeline (LightGBM + SHAP + UMAP + DBSCAN/HDBSCAN) is fully functional. Multiple alternative methods are planned but not yet implemented. See [TODO.md](TODO.md) for the full list of outstanding work.
+The baseline pipeline (MLP + SHAP + UMAP + HDBSCAN) is functional, as is the MLP + LRP path. Several alternative methods (LIME, PCA, t-SNE, PaCMAP, k-means) are still stubs. See [TODO.md](TODO.md) for the full list of outstanding work.
