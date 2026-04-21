@@ -11,8 +11,10 @@ _COMPOSITES = {
     "epsilon_plus": zcomp.EpsilonPlus,
     "epsilon_alpha2_beta1_flat": zcomp.EpsilonAlpha2Beta1Flat,
     "epsilon_alpha2_beta1": zcomp.EpsilonAlpha2Beta1,
-    "epsilon_gamma_box": zcomp.EpsilonGammaBox,
 }
+# NOTE: EpsilonGammaBox deliberately excluded -- it requires low/high
+# constructor kwargs that would need to be plumbed per-feature. Add back
+# once the config surface for composite arguments exists.
 
 
 class LRPAttributor(BaseAttributor):
