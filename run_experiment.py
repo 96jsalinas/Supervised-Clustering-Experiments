@@ -51,6 +51,17 @@ def main(config_path: str):
     metrics_df.to_csv(output_dir / "metrics.csv", index=False)
     print(metrics_df.to_string(index=False))
 
+    print("Saving arrays...")
+    import numpy as np
+    np.savez(
+        output_dir / "arrays.npz",
+        embedding_2d=result.embedding_2d,
+        cluster_labels_2d=result.cluster_labels_2d,
+        cluster_labels_full=result.cluster_labels_full,
+        y_subcluster=result.y_subcluster,
+        y_class=result.y_class,
+    )
+
     print("Saving figures...")
     save_all_figures(result, figures_dir)
 

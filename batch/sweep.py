@@ -76,6 +76,16 @@ def run_one(run_name: str, run_cfg: dict, results_root: Path) -> None:
     metrics_df = compute_all_metrics(result)
     metrics_df.to_csv(output_dir / "metrics.csv", index=False)
 
+    import numpy as np
+    np.savez(
+        output_dir / "arrays.npz",
+        embedding_2d=result.embedding_2d,
+        cluster_labels_2d=result.cluster_labels_2d,
+        cluster_labels_full=result.cluster_labels_full,
+        y_subcluster=result.y_subcluster,
+        y_class=result.y_class,
+    )
+
     print(f"[{run_name}] saving figures")
     save_all_figures(result, figures_dir)
 
