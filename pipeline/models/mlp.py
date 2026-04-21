@@ -6,11 +6,27 @@ from pipeline.base import BaseModel
 
 
 class _MLPNet(nn.Module):
-    """Plain Linear + ReLU stack. No BatchNorm so LRP composites apply cleanly."""
+    """Plain Linear + ReLU stack. No BatchNorm so LRP composites apply cleanly.
+
+    If mean/std buffers are provided the forward pass z-scores inputs
+    before the first Linear layer so attributors that call `net(raw_X)`
+    still receive correctly-scaled activations.
+    """
 
     def __init__(self, in_features: int, hidden_sizes: list[int],
-                 n_classes: int, dropout: float):
+                 n_classes: int, dropout: float,
+                 mean: np.ndarray | None = None,
+                 std: np.ndarray | None = None):
         super().__init__()
+        if mean is not None:
+            self.register_buffer("_mean",
+                                 torch.from_numpy(mean.astype(np.float32)))
+            self.register_buffer("_std",
+                                 torch.from_numpy(std.astype(np.float32)))
+            self._standardize = True
+        else:
+            self._standardize = False
+
         layers: list[nn.Module] = []
         prev = in_features
         for h in hidden_sizes:
@@ -23,6 +39,8 @@ class _MLPNet(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self._standardize:
+            x = (x - self._mean) / self._std
         return self.net(x)
 
 
@@ -39,6 +57,15 @@ class MLPModel(BaseModel):
         val_fraction      : float       default 0.2   (0 disables early stopping)
         patience          : int         default 20    (epochs w/o val improvement)
         device            : str         default "cpu"
+        standardize       : bool        default False (z-score features using
+                                        training-set stats; also applied at
+                                        predict time and propagated to
+                                        attribution via the transformed inputs)
+        n_classes         : int | None  default None  (inferred from y, so a
+                                        training subsample missing a class
+                                        will underestimate; set explicitly
+                                        when the true class cardinality is
+                                        known)
     """
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> None:
@@ -54,6 +81,8 @@ class MLPModel(BaseModel):
         val_fraction = float(params.get("val_fraction", 0.2))
         patience = int(params.get("patience", 20))
         device = params.get("device", "cpu")
+        standardize = bool(params.get("standardize", False))
+        n_classes_cfg = params.get("n_classes", None)
 
         if random_state is not None:
             torch.manual_seed(random_state)
@@ -61,7 +90,18 @@ class MLPModel(BaseModel):
 
         X = np.asarray(X, dtype=np.float32)
         y = np.asarray(y, dtype=np.int64)
-        n_classes = int(y.max()) + 1
+        n_classes = (
+            int(n_classes_cfg) if n_classes_cfg is not None
+            else max(int(y.max()) + 1, 2)
+        )
+
+        if standardize:
+            mean = X.mean(axis=0).astype(np.float32)
+            std = X.std(axis=0).astype(np.float32)
+            std[std < 1e-8] = 1.0
+        else:
+            mean = None
+            std = None
 
         rng = np.random.default_rng(random_state)
         idx = rng.permutation(len(X))
@@ -76,8 +116,11 @@ class MLPModel(BaseModel):
         X_val = torch.from_numpy(X[val_idx]).to(device) if len(val_idx) else None
         y_val = torch.from_numpy(y[val_idx]).to(device) if len(val_idx) else None
 
-        net = _MLPNet(X.shape[1], hidden_sizes, n_classes, dropout).to(device)
-        optim = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        net = _MLPNet(X.shape[1], hidden_sizes, n_classes, dropout,
+                      mean=mean, std=std).to(device)
+        optimizer = torch.optim.Adam(
+            net.parameters(), lr=lr, weight_decay=weight_decay
+        )
         loss_fn = nn.CrossEntropyLoss()
 
         best_val = float("inf")
@@ -85,16 +128,16 @@ class MLPModel(BaseModel):
         epochs_since_best = 0
 
         n_tr = len(X_tr)
-        for epoch in range(epochs):
+        for _epoch in range(epochs):
             net.train()
             perm = torch.randperm(n_tr)
             for start in range(0, n_tr, batch_size):
                 b = perm[start:start + batch_size]
-                optim.zero_grad()
+                optimizer.zero_grad()
                 logits = net(X_tr[b])
                 loss = loss_fn(logits, y_tr[b])
                 loss.backward()
-                optim.step()
+                optimizer.step()
 
             if X_val is None:
                 continue
