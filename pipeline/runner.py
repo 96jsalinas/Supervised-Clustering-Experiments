@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from time import perf_counter
 import numpy as np
 
 from pipeline.registry import MODELS, ATTRIBUTORS, REDUCERS, CLUSTERERS
@@ -15,6 +16,7 @@ class RunResult:
     embedding_2d: np.ndarray
     cluster_labels_2d: np.ndarray
     cluster_labels_full: np.ndarray
+    timings: dict = field(default_factory=dict)  # wall-clock seconds per step
 
 
 class PipelineRunner:
@@ -50,20 +52,32 @@ class PipelineRunner:
         Also clusters directly in the full attribution space (no DR)
         to serve as a comparison baseline.
         """
+        timings: dict = {}
+
         print("  Training model...")
+        t0 = perf_counter()
         self.model.fit(X, y_class)
+        timings["model_fit"] = perf_counter() - t0
 
         print("  Computing attributions...")
+        t0 = perf_counter()
         attributions = self.attributor.fit_transform(X, y_class, self.model)
+        timings["attribution"] = perf_counter() - t0
 
         print("  Reducing dimensions...")
+        t0 = perf_counter()
         embedding_2d = self.reducer.fit_transform(attributions)
+        timings["reduction"] = perf_counter() - t0
 
         print("  Clustering in 2D embedding space...")
+        t0 = perf_counter()
         cluster_labels_2d = self.clusterer.fit_predict(embedding_2d)
+        timings["clustering_2d"] = perf_counter() - t0
 
         print("  Clustering in full attribution space (no DR)...")
+        t0 = perf_counter()
         cluster_labels_full = self.clusterer.fit_predict(attributions)
+        timings["clustering_full"] = perf_counter() - t0
 
         return RunResult(
             X_raw=X,
@@ -73,4 +87,5 @@ class PipelineRunner:
             embedding_2d=embedding_2d,
             cluster_labels_2d=cluster_labels_2d,
             cluster_labels_full=cluster_labels_full,
+            timings=timings,
         )

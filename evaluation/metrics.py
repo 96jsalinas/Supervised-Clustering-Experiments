@@ -57,13 +57,28 @@ def compute_all_metrics(result: RunResult) -> pd.DataFrame:
     Returns a DataFrame with two rows: one for the 2D embedding space
     and one for the full attribution space (no DR).
     """
+    t = result.timings
+    shared_timings = {
+        "time_model_fit": t.get("model_fit"),
+        "time_attribution": t.get("attribution"),
+        "time_reduction": t.get("reduction"),
+    }
+
     rows = []
-    for space, labels, X_space in [
-        ("embedding_2d", result.cluster_labels_2d, result.embedding_2d),
-        ("full_attribution", result.cluster_labels_full, result.attributions),
+    for space, labels, X_space, t_clust in [
+        ("embedding_2d", result.cluster_labels_2d, result.embedding_2d,
+         t.get("clustering_2d")),
+        ("full_attribution", result.cluster_labels_full, result.attributions,
+         t.get("clustering_full")),
     ]:
         external = _compute_external(result.y_subcluster, labels)
         internal = _compute_internal(X_space, labels)
-        rows.append({"space": space, **external, **internal})
+        rows.append({
+            "space": space,
+            **external,
+            **internal,
+            **shared_timings,
+            "time_clustering": t_clust,
+        })
 
     return pd.DataFrame(rows)
