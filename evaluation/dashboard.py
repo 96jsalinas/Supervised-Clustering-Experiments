@@ -192,13 +192,38 @@ def save_classifier_bars(all_metrics: pd.DataFrame, out_dir: Path) -> None:
     plt.close(fig)
 
 
+def _method_combo(run: str, dataset_tag: str, model_tag: str) -> str:
+    """Strip `<dataset_tag>__` and `<model_tag>__` prefixes from a run name."""
+    rest = run
+    for prefix in (dataset_tag, model_tag):
+        if prefix and prefix != "default":
+            tag = f"{prefix}__"
+            if rest.startswith(tag):
+                rest = rest[len(tag):]
+    return rest
+
+
+def _add_method_combo_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Append a `method_combo` column derived from run / dataset_tag / model_tag."""
+    df = df.copy()
+    if "model_tag" in df.columns:
+        model_col = df["model_tag"].tolist()
+    else:
+        model_col = [""] * len(df)
+    df["method_combo"] = [
+        _method_combo(r, d, m if isinstance(m, str) else "")
+        for r, d, m in zip(df["run"], df["dataset_tag"], model_col)
+    ]
+    return df
+
+
 def save_stability_figure(all_metrics: pd.DataFrame, out_dir: Path) -> None:
     """Strip plot per external metric showing spread across dataset_tags.
 
-    Each subplot: x = method combo (derived by stripping the `<tag>__` prefix
-    from the run name), y = metric value, one point per dataset_tag. Only
-    runs that share a method combo across multiple dataset_tags contribute.
-    Skipped gracefully when fewer than two tags are present.
+    Each subplot: x = method combo, y = metric value, one point per
+    dataset_tag. Columns of subplots split by `model_tag` when present so
+    the two models can be compared side by side. Skipped gracefully when
+    fewer than two dataset tags are present.
     """
     if "dataset_tag" not in all_metrics.columns:
         return
@@ -207,46 +232,63 @@ def save_stability_figure(all_metrics: pd.DataFrame, out_dir: Path) -> None:
         print("  only one dataset_tag, skipping stability figure")
         return
 
-    df = all_metrics[all_metrics["space"] == "embedding_2d"].copy()
-    df["method_combo"] = df["run"].apply(
-        lambda r: r.split("__", 1)[1] if "__" in r else r
+    df = _add_method_combo_column(
+        all_metrics[all_metrics["space"] == "embedding_2d"]
     )
+
+    model_tags = (
+        sorted(df["model_tag"].dropna().unique())
+        if "model_tag" in df.columns else ["model"]
+    )
+    if not model_tags:
+        model_tags = ["model"]
 
     metrics_to_plot = ["ari", "nmi", "ami"]
     combos = sorted(df["method_combo"].unique())
-    fig, axes = plt.subplots(len(metrics_to_plot), 1,
-                             figsize=(max(8, 0.6 * len(combos)),
-                                      3 * len(metrics_to_plot)),
-                             sharex=True)
-    if len(metrics_to_plot) == 1:
-        axes = [axes]
+
+    n_rows = len(metrics_to_plot)
+    n_cols = len(model_tags)
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(max(6, 0.6 * len(combos)) * n_cols, 3 * n_rows),
+        sharex=True, squeeze=False,
+    )
 
     rng = np.random.default_rng(0)
     tag_order = sorted(tags)
     tag_to_color = {t: plt.cm.tab10(i % 10) for i, t in enumerate(tag_order)}
 
-    for ax, metric in zip(axes, metrics_to_plot):
-        for xi, combo in enumerate(combos):
-            sub = df[df["method_combo"] == combo]
-            for _, row in sub.iterrows():
-                x_jit = xi + (rng.random() - 0.5) * 0.25
-                ax.scatter(x_jit, row[metric],
-                           color=tag_to_color[row["dataset_tag"]],
-                           s=40, alpha=0.8,
-                           label=row["dataset_tag"])
-        ax.set_ylabel(metric.upper())
-        ax.set_ylim(0, 1)
-        ax.grid(axis="y", alpha=0.3)
+    for ri, metric in enumerate(metrics_to_plot):
+        for ci, m_tag in enumerate(model_tags):
+            ax = axes[ri][ci]
+            sub_m = (df[df["model_tag"] == m_tag]
+                     if "model_tag" in df.columns else df)
+            for xi, combo in enumerate(combos):
+                sub = sub_m[sub_m["method_combo"] == combo]
+                for _, row in sub.iterrows():
+                    x_jit = xi + (rng.random() - 0.5) * 0.25
+                    ax.scatter(x_jit, row[metric],
+                               color=tag_to_color[row["dataset_tag"]],
+                               s=40, alpha=0.8,
+                               label=row["dataset_tag"])
+            if ci == 0:
+                ax.set_ylabel(metric.upper())
+            if ri == 0:
+                ax.set_title(m_tag, fontsize=10)
+            ax.set_ylim(0, 1)
+            ax.grid(axis="y", alpha=0.3)
 
-    axes[-1].set_xticks(range(len(combos)))
-    axes[-1].set_xticklabels(combos, rotation=45, ha="right")
+    for ci in range(n_cols):
+        axes[-1][ci].set_xticks(range(len(combos)))
+        axes[-1][ci].set_xticklabels(combos, rotation=45, ha="right")
 
     handles_labels = {}
-    for ax in axes:
-        for h, lbl in zip(*ax.get_legend_handles_labels()):
-            handles_labels[lbl] = h
-    axes[0].legend(handles_labels.values(), handles_labels.keys(),
-                   fontsize=8, loc="upper right", title="dataset_tag")
+    for row in axes:
+        for ax in row:
+            for h, lbl in zip(*ax.get_legend_handles_labels()):
+                handles_labels[lbl] = h
+    axes[0][-1].legend(handles_labels.values(), handles_labels.keys(),
+                       fontsize=8, loc="upper right", title="dataset_tag")
 
     fig.suptitle("Metric stability across dataset realisations", fontsize=11)
     fig.tight_layout()
@@ -330,12 +372,13 @@ def save_metrics_table(all_metrics: pd.DataFrame, out_dir: Path) -> None:
 
 
 def save_pivot_heatmaps(all_metrics: pd.DataFrame, out_dir: Path) -> None:
-    """Per-metric method_combo x dataset_tag heatmaps.
+    """Per-metric method_combo x dataset_tag heatmaps, one column per model.
 
-    Designed to make "which technique wins where" readable at a glance
-    when a dataset axis is present. One subplot per metric. The best cell
-    per column (per dataset_tag) is bolded so readers can trace a winner
-    down each column. Skipped if there is only one dataset_tag.
+    Designed to make "which technique wins where, and for which model"
+    readable at a glance. Rows of subplots = metrics, columns = models.
+    The best cell per dataset (per column within a subplot) is bolded so
+    readers can trace a winner down each column. Skipped if there is only
+    one dataset_tag.
     """
     if "dataset_tag" not in all_metrics.columns:
         return
@@ -343,9 +386,8 @@ def save_pivot_heatmaps(all_metrics: pd.DataFrame, out_dir: Path) -> None:
         print("  only one dataset_tag, skipping pivot heatmaps")
         return
 
-    df = all_metrics[all_metrics["space"] == "embedding_2d"].copy()
-    df["method_combo"] = df["run"].apply(
-        lambda r: r.split("__", 1)[1] if "__" in r else r
+    df = _add_method_combo_column(
+        all_metrics[all_metrics["space"] == "embedding_2d"]
     )
 
     metrics_to_plot = [
@@ -360,53 +402,65 @@ def save_pivot_heatmaps(all_metrics: pd.DataFrame, out_dir: Path) -> None:
 
     combos = sorted(df["method_combo"].unique())
     tags = sorted(df["dataset_tag"].unique())
+    model_tags = (
+        sorted(df["model_tag"].dropna().unique())
+        if "model_tag" in df.columns else ["model"]
+    )
+    if not model_tags:
+        model_tags = ["model"]
 
-    ncols = 2 if len(available) > 1 else 1
-    nrows = int(np.ceil(len(available) / ncols))
+    n_rows = len(available)
+    n_cols = len(model_tags)
     fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(max(6, 1.1 * len(tags) + 3) * ncols,
-                 max(3, 0.5 * len(combos) + 1.5) * nrows),
+        n_rows, n_cols,
+        figsize=(max(6, 1.1 * len(tags) + 3) * n_cols,
+                 max(3, 0.5 * len(combos) + 1.5) * n_rows),
         squeeze=False,
     )
 
-    for idx, (col, label) in enumerate(available):
-        ax = axes[idx // ncols][idx % ncols]
-        pivot = df.pivot_table(
-            index="method_combo", columns="dataset_tag", values=col,
-            aggfunc="first",
-        ).reindex(index=combos, columns=tags)
+    for ri, (col, label) in enumerate(available):
+        for ci, m_tag in enumerate(model_tags):
+            ax = axes[ri][ci]
+            sub_m = (df[df["model_tag"] == m_tag]
+                     if "model_tag" in df.columns else df)
+            pivot = sub_m.pivot_table(
+                index="method_combo", columns="dataset_tag", values=col,
+                aggfunc="first",
+            ).reindex(index=combos, columns=tags)
 
-        arr = pivot.values.astype(float)
-        invert = col in LOWER_IS_BETTER
-        cmap = "RdYlGn_r" if invert else "RdYlGn"
+            arr = pivot.values.astype(float)
+            invert = col in LOWER_IS_BETTER
+            cmap = "RdYlGn_r" if invert else "RdYlGn"
 
-        im = ax.imshow(arr, aspect="auto", cmap=cmap)
-        ax.set_xticks(range(len(tags)))
-        ax.set_xticklabels(tags, rotation=30, ha="right", fontsize=8)
-        ax.set_yticks(range(len(combos)))
-        ax.set_yticklabels(combos, fontsize=8)
-        ax.set_title(label, fontsize=10)
+            im = ax.imshow(arr, aspect="auto", cmap=cmap)
+            ax.set_xticks(range(len(tags)))
+            ax.set_xticklabels(tags, rotation=30, ha="right", fontsize=8)
+            ax.set_yticks(range(len(combos)))
+            ax.set_yticklabels(combos, fontsize=8)
+            title = f"{label} — {m_tag}" if n_cols > 1 else label
+            ax.set_title(title, fontsize=10)
 
-        # Annotate each cell; bold the per-column winner.
-        col_best = (np.nanargmin(arr, axis=0) if invert
-                    else np.nanargmax(arr, axis=0))
-        for i in range(arr.shape[0]):
+            # Bold the per-column winner. Skip columns that are fully NaN.
+            col_best = np.full(arr.shape[1], -1)
             for j in range(arr.shape[1]):
-                v = arr[i, j]
-                if np.isnan(v):
+                col_vals = arr[:, j]
+                if np.all(np.isnan(col_vals)):
                     continue
-                weight = "bold" if i == col_best[j] else "normal"
-                ax.text(j, i, f"{v:.2f}", ha="center", va="center",
-                        fontsize=8, fontweight=weight, color="black")
+                col_best[j] = (int(np.nanargmin(col_vals)) if invert
+                               else int(np.nanargmax(col_vals)))
+            for i in range(arr.shape[0]):
+                for j in range(arr.shape[1]):
+                    v = arr[i, j]
+                    if np.isnan(v):
+                        continue
+                    weight = "bold" if i == col_best[j] else "normal"
+                    ax.text(j, i, f"{v:.2f}", ha="center", va="center",
+                            fontsize=8, fontweight=weight, color="black")
 
-        fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+            fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
 
-    # Hide unused subplot slots.
-    for k in range(len(available), nrows * ncols):
-        axes[k // ncols][k % ncols].axis("off")
-
-    fig.suptitle("Per-metric winners across datasets", fontsize=12)
+    fig.suptitle("Per-metric winners across datasets (columns = models)",
+                 fontsize=12)
     fig.tight_layout()
     fig.savefig(out_dir / "pivot_heatmaps.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
