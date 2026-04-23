@@ -1,6 +1,10 @@
-"""Run the Cartesian product of attribution x reduction x clustering methods
-defined in a grid spec YAML. Each combination writes to
-results/<attr>_<red>_<clust>/ with the same outputs as run_experiment.py.
+"""Run the Cartesian product of (dataset x model x attribution x reduction x
+clustering) combinations defined in a grid spec YAML. Each combination writes
+to results/<dataset_tag>__<model_tag>__<attr>_<red>_<clust>/ with the same
+outputs as run_experiment.py.
+
+Classifier tuning, when enabled, is hoisted to the (dataset x model) level so
+a single winner propagates to every (attr, red, clust) combo for that cell.
 
 Usage:
     python -m batch.sweep batch/full_grid.yaml
@@ -42,16 +46,34 @@ def _build_step_config(step_spec: dict, method: str) -> dict:
     return cfg
 
 
-def build_configs(spec: dict) -> list[tuple[str, dict]]:
+def _resolve_models(spec: dict) -> list[dict]:
+    """Return the list of model specs to iterate.
+
+    If the top-level `models:` key is present, use it verbatim. Otherwise fall
+    back to `model:` (singular) and synthesise a tag from the method name, so
+    existing single-model specs continue to work without edits.
+    """
+    if "models" in spec and spec["models"]:
+        models = []
+        for i, m in enumerate(spec["models"]):
+            m = deepcopy(m)
+            m.setdefault("tag", m.get("method", f"model{i}"))
+            models.append(m)
+        return models
+    single = deepcopy(spec.get("model", {}) or {})
+    single.setdefault("tag", single.get("method", "model"))
+    return [single]
+
+
+def build_configs(spec: dict) -> list[tuple[str, dict, str, str]]:
     """Enumerate all combinations from the grid spec.
 
-    If `datasets:` is present in the spec it must be a list of dicts with a
-    `tag:` key (short human-readable name) and an `override:` key (mapping
-    merged into the baseline `data:` block). The Cartesian product is then
-    taken over datasets x attribution x reduction x clustering and each run
-    directory is named `<dataset_tag>__<attr>_<red>_<clust>`.
+    If `datasets:` is present it is a list of `{tag, override}` entries
+    merged into the baseline `data:` block. If `models:` is present it is a
+    list of model configs each with a `tag` field. The Cartesian product is
+    datasets × models × attribution × reduction × clustering.
 
-    Returns a list of (run_name, run_config, dataset_tag) tuples.
+    Returns a list of (run_name, run_config, dataset_tag, model_tag) tuples.
     """
     attrs = spec["attribution"]["methods"]
     reds = spec["reduction"]["methods"]
@@ -61,30 +83,42 @@ def build_configs(spec: dict) -> list[tuple[str, dict]]:
     if datasets is None:
         datasets = [{"tag": None, "override": {}}]
 
+    models = _resolve_models(spec)
+
     runs = []
     for ds in datasets:
-        tag = ds.get("tag")
+        ds_tag = ds.get("tag")
         data_cfg = deepcopy(spec["data"])
         data_cfg.update(ds.get("override", {}))
-        for a, r, c in itertools.product(attrs, reds, clusts):
-            method_name = f"{a}_{r}_{c}"
-            run_name = f"{tag}__{method_name}" if tag else method_name
-            run_cfg = {
-                "data": data_cfg,
-                "model": deepcopy(spec["model"]),
-                "attribution": _build_step_config(spec["attribution"], a),
-                "reduction": _build_step_config(spec["reduction"], r),
-                "clustering": _build_step_config(spec["clustering"], c),
-                "evaluation": deepcopy(spec.get("evaluation", {})),
-            }
-            runs.append((run_name, run_cfg, tag or "default"))
+        for m_cfg in models:
+            model_tag = m_cfg["tag"]
+            model_block = {k: v for k, v in m_cfg.items() if k != "tag"}
+            for a, r, c in itertools.product(attrs, reds, clusts):
+                method_name = f"{a}_{r}_{c}"
+                parts = [p for p in (ds_tag, model_tag) if p]
+                prefix = "__".join(parts)
+                run_name = (
+                    f"{prefix}__{method_name}" if prefix else method_name
+                )
+                run_cfg = {
+                    "data": data_cfg,
+                    "model": deepcopy(model_block),
+                    "attribution": _build_step_config(spec["attribution"], a),
+                    "reduction": _build_step_config(spec["reduction"], r),
+                    "clustering": _build_step_config(spec["clustering"], c),
+                    "evaluation": deepcopy(spec.get("evaluation", {})),
+                }
+                runs.append(
+                    (run_name, run_cfg, ds_tag or "default", model_tag)
+                )
     return runs
 
 
 def run_one(run_name: str, run_cfg: dict, results_root: Path,
             dataset_tag: str = "default",
+            model_tag: str = "model",
             tuning_info: dict | None = None) -> None:
-    """Run a single (attr × red × clust) combination.
+    """Run a single (attr × red × clust) combination for one (dataset, model).
 
     If `tuning_info` is provided, the runner-level tuning pass is skipped
     (the combo's `model.tune.enabled` is forced to False) and the
@@ -112,6 +146,7 @@ def run_one(run_name: str, run_cfg: dict, results_root: Path,
 
     print(f"[{run_name}] computing metrics")
     metrics_df = compute_all_metrics(result)
+    metrics_df.insert(0, "model_tag", model_tag)
     metrics_df.insert(0, "dataset_tag", dataset_tag)
     if tuning_info is not None:
         metrics_df["tuned"] = True
@@ -158,8 +193,8 @@ def main():
     print(f"Total combinations: {len(runs)}")
 
     if args.dry_run:
-        for name, _, tag in runs:
-            print(f"  [{tag}] {name}")
+        for name, _, ds_tag, m_tag in runs:
+            print(f"  [{ds_tag} | {m_tag}] {name}")
         return
 
     results_root = Path(args.results_dir)
@@ -167,67 +202,78 @@ def main():
         results_root = SCRIPT_DIR / results_root
     results_root.mkdir(parents=True, exist_ok=True)
 
-    # Group combos by dataset_tag so tuning can be hoisted out of the inner
-    # loop — tuning is model-level, not method-level, and running it per
-    # combo would be both wasteful and noisy (different CV folds per combo).
-    by_dataset: dict[str, list] = {}
+    # Group combos by (dataset_tag, model_tag). Tuning is hoisted to this
+    # level — it depends on the model and the data, not on the downstream
+    # (attr, red, clust) choices, so running it per combo would be both
+    # wasteful and noisy (different CV folds per combo).
+    by_cell: dict[tuple[str, str], list] = {}
     for entry in runs:
-        by_dataset.setdefault(entry[2], []).append(entry)
+        by_cell.setdefault((entry[2], entry[3]), []).append(entry)
 
-    tuning_by_dataset: dict[str, dict] = {}
-    model_spec = spec.get("model", {}) or {}
-    tune_cfg = model_spec.get("tune") or {}
-    if tune_cfg.get("enabled", False):
-        eval_cfg = spec.get("evaluation", {}) or {}
-        test_fraction = float(eval_cfg.get("test_fraction", 0.2))
-        split_seed = int(eval_cfg.get(
-            "split_seed", model_spec.get("random_state", 42)
-        ))
-        for tag, entries in by_dataset.items():
-            sample_cfg = entries[0][1]  # all combos in a dataset share data
-            print(f"\n=== Tuning classifier for dataset '{tag}' ===")
+    tuning_by_cell: dict[tuple[str, str], dict] = {}
+    eval_cfg = spec.get("evaluation", {}) or {}
+    test_fraction = float(eval_cfg.get("test_fraction", 0.2))
+
+    # Cache generated data per dataset_tag so we don't regenerate per model.
+    data_cache: dict[str, tuple] = {}
+
+    for (ds_tag, m_tag), entries in by_cell.items():
+        sample_cfg = entries[0][1]
+        model_cfg = sample_cfg["model"]
+        tune_cfg = (model_cfg or {}).get("tune") or {}
+        if not tune_cfg.get("enabled", False):
+            continue
+
+        if ds_tag not in data_cache:
             X, y_class, _ = generate_data(sample_cfg["data"])
-            train_idx, _ = train_test_split(
-                np.arange(len(X)),
-                test_size=test_fraction,
-                stratify=y_class,
-                random_state=split_seed,
-            )
-            selected, grid_rows = tune_classifier(
-                model_cls=MODELS[model_spec["method"]],
-                base_config=model_spec,
-                tune_cfg=tune_cfg,
-                X_train=X[train_idx],
-                y_train=y_class[train_idx],
-            )
-            tune_dir = results_root / f"{tag}__tuning"
-            tune_dir.mkdir(parents=True, exist_ok=True)
-            grid_rows.to_csv(tune_dir / "tuning_grid.csv", index=False)
-            with open(tune_dir / "tuning_selected.yaml", "w") as f:
-                yaml.safe_dump(selected, f, sort_keys=False)
-            print(f"  winner: {selected['combo_tag']} "
-                  f"{selected['scoring']}={selected['cv_score_mean']:.4f}")
-            tuning_by_dataset[tag] = selected
+            data_cache[ds_tag] = (X, y_class)
+        else:
+            X, y_class = data_cache[ds_tag]
+
+        split_seed = int(eval_cfg.get(
+            "split_seed", model_cfg.get("random_state", 42)
+        ))
+        train_idx, _ = train_test_split(
+            np.arange(len(X)),
+            test_size=test_fraction,
+            stratify=y_class,
+            random_state=split_seed,
+        )
+        print(f"\n=== Tuning classifier for [{ds_tag} | {m_tag}] ===")
+        selected, grid_rows = tune_classifier(
+            model_cls=MODELS[model_cfg["method"]],
+            base_config=model_cfg,
+            tune_cfg=tune_cfg,
+            X_train=X[train_idx],
+            y_train=y_class[train_idx],
+        )
+        tune_dir = results_root / f"{ds_tag}__{m_tag}__tuning"
+        tune_dir.mkdir(parents=True, exist_ok=True)
+        grid_rows.to_csv(tune_dir / "tuning_grid.csv", index=False)
+        with open(tune_dir / "tuning_selected.yaml", "w") as f:
+            yaml.safe_dump(selected, f, sort_keys=False)
+        print(f"  winner: {selected['combo_tag']} "
+              f"{selected['scoring']}={selected['cv_score_mean']:.4f}")
+        tuning_by_cell[(ds_tag, m_tag)] = selected
 
     failed = []
-    total = sum(len(v) for v in by_dataset.values())
+    total = sum(len(v) for v in by_cell.values())
     idx = 0
-    for tag, entries in by_dataset.items():
-        selected = tuning_by_dataset.get(tag)
-        for (name, cfg, _tag) in entries:
+    for (ds_tag, m_tag), entries in by_cell.items():
+        selected = tuning_by_cell.get((ds_tag, m_tag))
+        for (name, cfg, _ds, _m) in entries:
             idx += 1
             print(f"\n=== [{idx}/{total}] {name} ===")
             combo_cfg = cfg
             if selected is not None:
-                # Inject tuned params, then disable runner-level tuning so the
-                # combo does not re-tune; the winner is shared across combos.
                 combo_cfg = deepcopy(cfg)
                 combo_cfg["model"].setdefault("params", {}).update(
                     selected["params"]
                 )
                 combo_cfg["model"].setdefault("tune", {})["enabled"] = False
             try:
-                run_one(name, combo_cfg, results_root, dataset_tag=tag,
+                run_one(name, combo_cfg, results_root,
+                        dataset_tag=ds_tag, model_tag=m_tag,
                         tuning_info=selected)
             except Exception as exc:  # noqa: BLE001
                 print(f"[{name}] FAILED: {exc}")
