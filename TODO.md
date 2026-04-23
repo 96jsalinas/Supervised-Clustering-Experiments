@@ -26,7 +26,7 @@ Outstanding work for the experimental framework. Items are grouped by category.
 
 ## Infrastructure
 
-- [x] **Batch runner** (`batch/sweep.py`) -- Cartesian-product sweep with `--dry-run`, per-run result folders, shallow method-override merge, optional `datasets:` axis, per-dataset classifier tuning hoisted out of the combo loop.
+- [x] **Batch runner** (`batch/sweep.py`) -- Cartesian-product sweep with `--dry-run`, per-run result folders, shallow method-override merge, optional `datasets:` axis, optional `models:` axis, per-(dataset × model) classifier tuning hoisted out of the combo loop.
 - [ ] **`requirements.txt`** -- generate from the current working environment once the dependency set stabilizes.
 - [ ] **Logging** -- replace `print()` statements with Python `logging` for configurable verbosity.
 
@@ -34,4 +34,6 @@ Outstanding work for the experimental framework. Items are grouped by category.
 
 - [x] **Multiple synthetic datasets** -- `datasets:` axis in grid specs; `batch/robustness_grid.yaml` covers seed replicates + easy/medium/hard scenarios.
 - [x] **Stability analysis** -- 24-run robustness sweep across 3 seeds and 3 difficulty scenarios; stability figure + pivot heatmaps in the dashboard.
+- [x] **Second generator family (axis-alignment test)** -- `rotate_informative: true` applies a random orthogonal rotation to `make_blobs`'s informative subspace; preserves cluster identities and pairwise centroid distances exactly, breaks tree-friendly axis-alignment.
+- [ ] **Full comparison sweep** -- `batch/full_comparison_grid.yaml` (42 dataset cells × 2 models × 4 method combos = 336 runs) queued for overnight execution. See `HANDOFF_OVERNIGHT_SWEEP.md` for run and interpretation instructions.
 - [ ] **Real-world dataset** -- if time permits, apply the pipeline to a real dataset.

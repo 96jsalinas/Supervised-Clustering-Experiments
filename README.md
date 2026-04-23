@@ -24,8 +24,10 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 │   ├── mlp_baseline.yaml       # Thesis baseline: MLP+SHAP+UMAP+HDBSCAN
 │   └── mlp_lrp.yaml            # MLP+LRP+UMAP+HDBSCAN
 ├── batch/                      # Cartesian-product sweeps over pipeline methods
-│   ├── sweep.py                # Sweep runner
-│   └── full_grid.yaml          # Grid spec (attribution x reduction x clustering)
+│   ├── sweep.py                # Sweep runner (datasets x models x attr x red x clust)
+│   ├── full_grid.yaml          # Method-only grid (one model, one dataset)
+│   ├── robustness_grid.yaml    # Prior stability sweep (single model, seed + difficulty axes)
+│   └── full_comparison_grid.yaml  # Overnight grid: two models, two generator families
 ├── pipeline/                   # Modular pipeline components
 │   ├── base.py                 # Abstract base classes
 │   ├── registry.py             # Maps config method names to Python classes
@@ -65,6 +67,8 @@ To sweep the full method grid:
 python -m batch.sweep batch/full_grid.yaml
 ```
 
+The sweep runner also accepts an optional `datasets:` list (iterate over data-config overrides) and an optional `models:` list (iterate over model configs) so a single spec can produce a (dataset × model × attribution × reduction × clustering) Cartesian product. Classifier tuning declared under `model.tune.enabled` is hoisted to run once per (dataset × model) cell and its winner propagates to every method combo for that cell. See `batch/full_comparison_grid.yaml` for the full-shape example and `batch/full_comparison_smoke.yaml` for a minimal version.
+
 To aggregate all runs in `results/` into cross-run figures and a summary table:
 
 ```bash
@@ -94,4 +98,4 @@ This is **not** an attempt to reimplement `sklearn.make_classification`. Centroi
 
 ## Current status
 
-All pipeline methods (MLP, LightGBM, SHAP, LRP, LIME, UMAP, PCA, t-SNE, PaCMAP, DBSCAN, HDBSCAN, k-means) are implemented. Batch sweep and cross-run dashboard are in place. Next phase is experiment-design expansion (dataset variation, stability, DBSCAN eps tuning) and MLP hyperparameter tuning; see [TODO.md](TODO.md).
+All pipeline methods (MLP, LightGBM, SHAP, LRP, LIME, UMAP, PCA, t-SNE, PaCMAP, DBSCAN, HDBSCAN, k-means) are implemented. Batch sweep accepts dataset and model axes; classifier-level metrics land in every run via a stratified train/test split; `model.tune` blocks can tune classifier hyperparameters per (dataset × model) cell via stratified K-fold CV. The cross-run dashboard produces model-aware pivot heatmaps, stability strips, and a colour-coded metrics table. See [TODO.md](TODO.md) for outstanding items.
