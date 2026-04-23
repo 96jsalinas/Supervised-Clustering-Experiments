@@ -1,0 +1,100 @@
+# Smoke test for the full-comparison pipeline. Exercises every new moving
+# part — rotate_informative, models: axis, per-(dataset, model) tuning,
+# model_tag in metrics.csv and dashboard — in under ~3 minutes.
+#
+# Usage:
+#     python -m batch.sweep batch/full_comparison_smoke.yaml \
+#         --results-dir results_smoke_fullcomparison
+#     python -m evaluation.dashboard \
+#         --results-dir results_smoke_fullcomparison \
+#         --out figures/dashboard_smoke_fullcomparison
+#
+# Expected after success: 4 run dirs (2 datasets × 2 models × 1 combo) plus
+# 4 tuning dirs (one per dataset×model). Delete the results folder before
+# launching the real overnight grid.
+
+data:
+  n_samples: 1000
+  n_features: 50
+  n_informative: 5
+  n_clusters: 6
+  cluster_std: 1.0
+  center_box: [-2.0, 2.0]
+  random_state: 42
+  rotate_informative: false
+
+datasets:
+  - tag: blobs_base_s1
+    override: {random_state: 1, rotate_informative: false}
+  - tag: rotated_base_s1
+    override: {random_state: 1, rotate_informative: true}
+
+# Tiny tune grids: enough to exercise the tuning machinery without burning
+# time. Per-(dataset, model) → 4 tune-grid points total, each CV'd over 3
+# folds → 24 classifier fits total for tuning; plus the 4 pipeline runs.
+models:
+  - tag: mlp
+    method: mlp
+    random_state: 42
+    params:
+      hidden_sizes: [64, 32]
+      activation: relu
+      dropout: 0.0
+      label_smoothing: 0.0
+      lr: 0.001
+      epochs: 60
+      patience: 15
+      batch_size: 64
+      weight_decay: 0.0
+      val_fraction: 0.2
+      standardize: false
+    tune:
+      enabled: true
+      cv: {n_splits: 3, shuffle: true, random_state: 42}
+      scoring: accuracy
+      grid:
+        lr: [0.001, 0.003]
+
+  - tag: lightgbm
+    method: lightgbm
+    random_state: 42
+    params: {}
+    tune:
+      enabled: true
+      cv: {n_splits: 3, shuffle: true, random_state: 42}
+      scoring: accuracy
+      grid:
+        num_leaves: [31, 63]
+
+attribution:
+  methods: [shap]
+  common:
+    target_class: 1
+    random_state: 42
+  per_method:
+    shap: {}
+
+reduction:
+  methods: [pca]
+  common:
+    random_state: 42
+  per_method:
+    pca:
+      params:
+        n_components: 2
+
+clustering:
+  methods: [kmeans]
+  common: {}
+  per_method:
+    kmeans:
+      random_state: 42
+      params:
+        n_clusters: 6
+        n_init: 10
+
+evaluation:
+  external: [ari, nmi, ami]
+  internal: [silhouette, davies_bouldin, calinski_harabasz]
+  test_fraction: 0.2
+  split_seed: 42
