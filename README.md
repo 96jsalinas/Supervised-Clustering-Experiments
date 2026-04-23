@@ -73,6 +73,25 @@ python -m evaluation.dashboard --out figures/dashboard/
 
 This produces `metrics_table.csv` / `metrics_table.png`, `embedding_grid.png` (one scatter per run), and `metric_bars.png` (external metrics grouped by pipeline-step variation) for direct LaTeX inclusion.
 
+## Data generation
+
+The synthetic datasets (`data/synthetic.py`) are produced by `sklearn.make_blobs` in an `n_informative`-dimensional subspace and padded with independent Gaussian noise features to reach `n_features` total. Binary class labels are derived as `y_class = y_subcluster % n_classes`, so cluster 0 → class 0, cluster 1 → class 1, cluster 2 → class 0, etc. `center_box` controls the range in which cluster centres are placed; narrowing it increases raw-feature-space overlap so the pipeline gets a non-trivial subgroup-discovery problem rather than clusters that separate on any single axis.
+
+### Optional orthogonal rotation of the informative subspace
+
+The `rotate_informative: true` flag in a `data:` block applies one extra step after `make_blobs` returns: the informative columns of `X` are multiplied by a random orthogonal matrix `Q` (QR-decomposed from a Gaussian matrix seeded by `random_state`). This is a deliberate, transparent way to test whether a model's performance depends on cluster centres being axis-aligned with the feature basis.
+
+**What is preserved exactly** (verifiable with an equality check):
+
+- Cluster identities (`y_subcluster` is untouched; rotation is a bijection).
+- Per-cluster sample counts.
+- All pairwise centroid-to-centroid distances (rotation is isometric).
+- Isotropic within-cluster covariance.
+
+**What changes:** cluster principal axes are no longer parallel to the feature axes, so splits along a single coordinate (the move tree ensembles rely on) no longer align with the informative structure. The MLP, which processes feature vectors through a learned linear layer, is basis-invariant and should be unaffected — any gap that persists or closes between models under rotation is evidence about axis-alignment, not about model capacity.
+
+This is **not** an attempt to reimplement `sklearn.make_classification`. Centroid placement, feature correlations, redundant features, and label noise are all left exactly as the default `make_blobs` path produces them. Only the basis of the informative subspace is randomised.
+
 ## Current status
 
 All pipeline methods (MLP, LightGBM, SHAP, LRP, LIME, UMAP, PCA, t-SNE, PaCMAP, DBSCAN, HDBSCAN, k-means) are implemented. Batch sweep and cross-run dashboard are in place. Next phase is experiment-design expansion (dataset variation, stability, DBSCAN eps tuning) and MLP hyperparameter tuning; see [TODO.md](TODO.md).
