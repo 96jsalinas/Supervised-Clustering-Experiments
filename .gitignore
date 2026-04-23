@@ -25,4 +25,8 @@ Desktop.ini
 
 # Generated experiment outputs — reproducible from configs
 results/
+results_*/
 figures/
+
+# Transient run logs
+*_log.txt

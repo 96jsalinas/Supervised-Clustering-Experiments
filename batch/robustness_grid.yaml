@@ -1,0 +1,75 @@
+# Robustness sweep over multiple data realisations (Pablo's question 4).
+# Fixes model=LightGBM (our strongest classifier per Item 1 findings) and
+# attribution=SHAP, then varies (a) dataset seed, (b) informative/subcluster
+# counts to cover easy/medium/hard scenarios. Reducers + clusterers are kept
+# to the interesting subset from the 36-run sweep (UMAP, PCA; HDBSCAN, k-means).
+
+data:
+  n_samples: 1000
+  n_features: 50
+  n_informative: 5
+  n_clusters: 6
+  cluster_std: 1.0
+  center_box: [-2.0, 2.0]
+  random_state: 42
+
+# Each entry inherits the `data:` block above and overrides the listed keys.
+datasets:
+  - tag: seed01
+    override: {random_state: 1}
+  - tag: seed02
+    override: {random_state: 2}
+  - tag: seed03
+    override: {random_state: 3}
+  - tag: easy
+    override: {random_state: 42, n_informative: 10, n_clusters: 4, cluster_std: 0.7}
+  - tag: medium
+    override: {random_state: 42, n_informative: 5,  n_clusters: 6, cluster_std: 1.0}
+  - tag: hard
+    override: {random_state: 42, n_informative: 3,  n_clusters: 8, cluster_std: 1.3}
+
+model:
+  method: lightgbm
+  random_state: 42
+  params: {}
+
+attribution:
+  methods: [shap]
+  common:
+    target_class: 1
+    random_state: 42
+  per_method:
+    shap: {}
+
+reduction:
+  methods: [umap, pca]
+  common:
+    random_state: 42
+  per_method:
+    umap:
+      params:
+        n_components: 2
+        n_neighbors: 200
+        min_dist: 0.0
+    pca:
+      params:
+        n_components: 2
+
+clustering:
+  methods: [hdbscan, kmeans]
+  common: {}
+  per_method:
+    hdbscan:
+      params:
+        min_cluster_size: 70
+    kmeans:
+      random_state: 42
+      params:
+        n_clusters: 6
+        n_init: 10
+
+evaluation:
+  external: [ari, nmi, ami]
+  internal: [silhouette, davies_bouldin, calinski_harabasz]
+  test_fraction: 0.2
+  split_seed: 42

@@ -1,5 +1,8 @@
 # Full method sweep. One run per (attribution x reduction x clustering) combination.
 # A single shared model (MLP) is implied but re-trained per combination so seeds stay clean.
+# DBSCAN is intentionally excluded: with a fixed eps it is not a fair comparison
+# against HDBSCAN's automatic selection. Prior DBSCAN results live under
+# configs/cooper_dbscan.yaml for the Cooper-style baseline reproduction only.
 
 data:
   n_samples: 1000
@@ -61,16 +64,12 @@ reduction:
         n_components: 2
 
 clustering:
-  methods: [hdbscan, dbscan, kmeans]
+  methods: [hdbscan, kmeans]
   common: {}
   per_method:
     hdbscan:
       params:
         min_cluster_size: 70
-    dbscan:
-      params:
-        eps: 1.5
-        min_samples: 5
     kmeans:
       random_state: 42
       params:

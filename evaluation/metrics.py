@@ -10,6 +10,11 @@ from sklearn.metrics import (
 )
 
 from pipeline.runner import RunResult
+from evaluation.classifier import compute_classifier_metrics
+
+# Back-compat alias — older code imported `_compute_classifier` from here
+# before the helper moved to `evaluation.classifier`.
+_compute_classifier = compute_classifier_metrics
 
 
 def _compute_external(y_true: np.ndarray, labels: np.ndarray) -> dict:
@@ -64,6 +69,13 @@ def compute_all_metrics(result: RunResult) -> pd.DataFrame:
         "time_reduction": t.get("reduction"),
     }
 
+    y_class_test = (
+        result.y_class[result.test_idx] if result.test_idx is not None else None
+    )
+    classifier = _compute_classifier(y_class_test, result.proba_test)
+    n_test = int(len(result.test_idx)) if result.test_idx is not None else 0
+    n_train = int(len(result.train_idx)) if result.train_idx is not None else 0
+
     rows = []
     for space, labels, X_space, t_clust in [
         ("embedding_2d", result.cluster_labels_2d, result.embedding_2d,
@@ -79,6 +91,9 @@ def compute_all_metrics(result: RunResult) -> pd.DataFrame:
             **internal,
             **shared_timings,
             "time_clustering": t_clust,
+            **classifier,
+            "n_train": n_train,
+            "n_test": n_test,
         })
 
     return pd.DataFrame(rows)

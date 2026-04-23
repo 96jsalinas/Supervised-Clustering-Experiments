@@ -48,6 +48,27 @@ def main(config_path: str):
 
     print("Computing metrics...")
     metrics_df = compute_all_metrics(result)
+
+    if result.tuning_selected is not None:
+        sel = result.tuning_selected
+        metrics_df["tuned"] = True
+        metrics_df["cv_score"] = sel["cv_score_mean"]
+        metrics_df["cv_score_std"] = sel["cv_score_std"]
+        metrics_df["cv_scoring"] = sel["scoring"]
+        for k, v in sel["params"].items():
+            metrics_df[f"selected_{k}"] = (
+                str(v) if isinstance(v, (list, tuple)) else v
+            )
+        result.tuning_grid.to_csv(
+            output_dir / "tuning_grid.csv", index=False
+        )
+        with open(output_dir / "tuning_selected.yaml", "w") as f:
+            yaml.safe_dump(sel, f, sort_keys=False)
+        print(f"Tuning winner: {sel['combo_tag']} "
+              f"({sel['scoring']}={sel['cv_score_mean']:.4f})")
+    else:
+        metrics_df["tuned"] = False
+
     metrics_df.to_csv(output_dir / "metrics.csv", index=False)
     print(metrics_df.to_string(index=False))
 

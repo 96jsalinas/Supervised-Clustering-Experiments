@@ -5,8 +5,16 @@ import torch.nn as nn
 from pipeline.base import BaseModel
 
 
+_ACTIVATIONS = {
+    "relu": nn.ReLU,
+    "gelu": nn.GELU,
+    "tanh": nn.Tanh,
+}
+
+
 class _MLPNet(nn.Module):
-    """Plain Linear + ReLU stack. No BatchNorm so LRP composites apply cleanly.
+    """Plain Linear + activation stack. No BatchNorm so LRP composites apply
+    cleanly. Activation defaults to ReLU but can be swapped via the config.
 
     If mean/std buffers are provided the forward pass z-scores inputs
     before the first Linear layer so attributors that call `net(raw_X)`
@@ -15,6 +23,7 @@ class _MLPNet(nn.Module):
 
     def __init__(self, in_features: int, hidden_sizes: list[int],
                  n_classes: int, dropout: float,
+                 activation_cls: type = nn.ReLU,
                  mean: np.ndarray | None = None,
                  std: np.ndarray | None = None):
         super().__init__()
@@ -31,7 +40,7 @@ class _MLPNet(nn.Module):
         prev = in_features
         for h in hidden_sizes:
             layers.append(nn.Linear(prev, h))
-            layers.append(nn.ReLU())
+            layers.append(activation_cls())
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
             prev = h
@@ -61,6 +70,14 @@ class MLPModel(BaseModel):
                                         training-set stats; also applied at
                                         predict time and propagated to
                                         attribution via the transformed inputs)
+        activation        : str         default "relu" — one of relu/gelu/tanh.
+                                        BatchNorm is intentionally absent so
+                                        any choice stays LRP-compatible.
+        label_smoothing   : float       default 0.0 (passed through to
+                                        nn.CrossEntropyLoss; non-zero values
+                                        soften the target distribution which
+                                        can preserve more intra-class signal
+                                        in the logits than one-hot CE).
         n_classes         : int | None  default None  (inferred from y, so a
                                         training subsample missing a class
                                         will underestimate; set explicitly
@@ -82,6 +99,14 @@ class MLPModel(BaseModel):
         patience = int(params.get("patience", 20))
         device = params.get("device", "cpu")
         standardize = bool(params.get("standardize", False))
+        activation_name = str(params.get("activation", "relu")).lower()
+        if activation_name not in _ACTIVATIONS:
+            raise ValueError(
+                f"Unknown activation '{activation_name}'. "
+                f"Supported: {sorted(_ACTIVATIONS)}"
+            )
+        activation_cls = _ACTIVATIONS[activation_name]
+        label_smoothing = float(params.get("label_smoothing", 0.0))
         n_classes_cfg = params.get("n_classes", None)
 
         if random_state is not None:
@@ -117,11 +142,12 @@ class MLPModel(BaseModel):
         y_val = torch.from_numpy(y[val_idx]).to(device) if len(val_idx) else None
 
         net = _MLPNet(X.shape[1], hidden_sizes, n_classes, dropout,
+                      activation_cls=activation_cls,
                       mean=mean, std=std).to(device)
         optimizer = torch.optim.Adam(
             net.parameters(), lr=lr, weight_decay=weight_decay
         )
-        loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
         best_val = float("inf")
         best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}

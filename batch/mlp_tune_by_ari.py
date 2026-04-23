@@ -1,4 +1,9 @@
-"""MLP hyperparameter tuning sweep.
+"""MLP hyperparameter tuning sweep — LEGACY (ranks by ARI).
+
+Kept for reproducibility of the 12 April 2026 tuning sweep. New tuning work
+should use the in-pipeline `model.tune` block (see `pipeline/tuning.py` and
+`configs/mlp_parity_tune.yaml`), which ranks by classifier metrics on a
+held-out split via stratified K-fold CV.
 
 Fixes SHAP + UMAP + HDBSCAN (same as mlp_baseline.yaml) and varies:
   - standardize  : whether to z-score inputs inside the MLP
@@ -7,9 +12,9 @@ Fixes SHAP + UMAP + HDBSCAN (same as mlp_baseline.yaml) and varies:
 Writes results to results/mlp_tune/<combo>/ and prints a ranked summary table.
 
 Usage:
-    python -m batch.mlp_tune
-    python -m batch.mlp_tune --dry-run
-    python -m batch.mlp_tune --results-dir results/mlp_tune
+    python -m batch.mlp_tune_by_ari
+    python -m batch.mlp_tune_by_ari --dry-run
+    python -m batch.mlp_tune_by_ari --results-dir results/mlp_tune
 """
 
 import argparse

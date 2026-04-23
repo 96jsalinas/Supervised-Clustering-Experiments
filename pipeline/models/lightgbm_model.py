@@ -18,3 +18,9 @@ class LightGBMModel(BaseModel):
     @property
     def model(self):
         return self._model
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        return self._model.predict_proba(X)
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return self._model.predict(X)

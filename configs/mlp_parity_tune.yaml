@@ -1,0 +1,69 @@
+# Exercise the in-pipeline tuning pre-step end-to-end.
+#
+# Goal: find an MLP hyperparameter combo that matches LightGBM on classifier
+# accuracy on the baseline synthetic data (LightGBM reaches ~0.87 on the same
+# split). Uses PCA + k-means for the downstream steps so the run is fast and
+# the classifier signal is not lost in a slow SHAP+UMAP chain.
+
+data:
+  n_samples: 1000
+  n_features: 50
+  n_informative: 5
+  n_clusters: 6
+  cluster_std: 1.0
+  center_box: [-2.0, 2.0]
+  random_state: 42
+
+model:
+  method: mlp
+  random_state: 42
+  params:
+    hidden_sizes: [64, 32]
+    activation: relu
+    dropout: 0.0
+    label_smoothing: 0.0
+    lr: 0.001
+    epochs: 500
+    patience: 60
+    batch_size: 64
+    weight_decay: 0.0
+    val_fraction: 0.2
+    standardize: false
+  tune:
+    enabled: true
+    cv:
+      n_splits: 5
+      shuffle: true
+      random_state: 42
+    scoring: accuracy
+    grid:
+      hidden_sizes: [[64, 32], [128, 64], [128, 64, 32]]
+      activation: [relu, gelu]
+      label_smoothing: [0.0, 0.1]
+      dropout: [0.0, 0.2]
+      lr: [0.0005, 0.001, 0.003]
+
+attribution:
+  method: shap
+  target_class: 1
+  background_size: 100
+  random_state: 42
+
+reduction:
+  method: pca
+  random_state: 42
+  params:
+    n_components: 2
+
+clustering:
+  method: kmeans
+  random_state: 42
+  params:
+    n_clusters: 6
+    n_init: 10
+
+evaluation:
+  external: [ari, nmi, ami]
+  internal: [silhouette, davies_bouldin, calinski_harabasz]
+  test_fraction: 0.2
+  split_seed: 42
