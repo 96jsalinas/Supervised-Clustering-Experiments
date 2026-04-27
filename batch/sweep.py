@@ -13,9 +13,39 @@ Usage:
 
 import argparse
 import itertools
+import os
 import sys
+import warnings
 from copy import deepcopy
 from pathlib import Path
+
+# Silence three benign warnings that completely flood the sweep log
+# (~9.9k warning lines on the 24-Apr run, vs ~5.8k actual progress lines):
+#   - LightGBM raises "X does not have valid feature names" on every
+#     predict because we feed it numpy arrays after fitting with a DataFrame.
+#   - UMAP prints "n_jobs value 1 overridden" once per fit when
+#     random_state is set (we always set it for reproducibility).
+#   - sklearn's KMeans warns about an MKL memory leak on Windows when
+#     n_chunks < n_threads. Setting OMP_NUM_THREADS=4 before sklearn is
+#     imported is the recommended fix and removes the warning at source.
+# Filters are message-scoped, not blanket "ignore", so any new or
+# unrelated warning still surfaces.
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+warnings.filterwarnings(
+    "ignore",
+    message=r"X does not have valid feature names",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"n_jobs value .* overridden to 1 by setting random_state",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"KMeans is known to have a memory leak on Windows with MKL",
+    category=UserWarning,
+)
 
 import numpy as np
 import yaml

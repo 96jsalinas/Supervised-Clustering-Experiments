@@ -30,3 +30,6 @@ figures/
 
 # Transient run logs
 *_log.txt
+
+# R session history
+.Rhistory

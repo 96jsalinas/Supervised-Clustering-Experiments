@@ -3,17 +3,32 @@ library(tidyr)
 library(readr)
 library(stringr)
 library(knitr)
+library(ggplot2)
 
-metrics_path <- "figures/dashboard_full_comparison/metrics_table.csv"
+# Inputs / outputs. Override via positional args:
+#   Rscript analyze_sweep.R <metrics_csv> <figures_dir>
+args <- commandArgs(trailingOnly = TRUE)
+metrics_path <- if (length(args) >= 1) args[[1]] else "figures/dashboard_full_comparison/metrics_table.csv"
+figures_dir  <- if (length(args) >= 2) args[[2]] else dirname(metrics_path)
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+
 df <- read_csv(metrics_path, show_col_types = FALSE)
 
 df <- df %>%
   mutate(
-    combo     = str_split_fixed(run, "__", 3)[, 3],
-    generator = str_split_fixed(dataset_tag, "_", 2)[, 1],
-    base_tag  = str_replace(dataset_tag, "_s[0-9]+$", ""),
-    axis      = str_split_fixed(dataset_tag, "_", 3)[, 2]
+    combo        = str_split_fixed(run, "__", 3)[, 3],
+    generator    = str_split_fixed(dataset_tag, "_", 2)[, 1],
+    base_tag     = str_replace(dataset_tag, "_s[0-9]+$", ""),
+    axis         = str_split_fixed(dataset_tag, "_", 3)[, 2],
+    seed         = str_extract(dataset_tag, "s[0-9]+$"),
+    attribution  = str_split_fixed(combo, "_", 3)[, 1],
+    dr           = str_split_fixed(combo, "_", 3)[, 2],
+    clusterer    = str_split_fixed(combo, "_", 3)[, 3]
   )
+
+# ---------------------------------------------------------------------------
+# Tables (as before)
+# ---------------------------------------------------------------------------
 
 cat("\n===== 1. Mean classifier accuracy per generator =====\n")
 acc_by_gen <- df %>%
@@ -95,3 +110,106 @@ noise_check <- df %>%
   ) %>%
   arrange(model_tag, combo, space)
 print(kable(noise_check, digits = 1))
+
+# ---------------------------------------------------------------------------
+# Figures
+# ---------------------------------------------------------------------------
+
+theme_set(theme_minimal(base_size = 11))
+
+save_plot <- function(p, name, w = 8, h = 5) {
+  path <- file.path(figures_dir, name)
+  ggsave(path, p, width = w, height = h, dpi = 150)
+  cat(sprintf("wrote %s\n", path))
+}
+
+# Long-form ARI dataframe filtered to the embedded 2D space (where the
+# clustering decision is actually made) for the ARI grouped boxplots.
+ari_emb <- df %>% filter(space == "embedding_2d")
+
+# ARI by model (faceted by space so we keep the full-attribution view too).
+p_ari_model <- ggplot(df, aes(x = model_tag, y = ari, fill = model_tag)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  facet_wrap(~ space) +
+  labs(title = "ARI by model", x = NULL, y = "ARI") +
+  theme(legend.position = "none")
+save_plot(p_ari_model, "fig_ari_by_model.png")
+
+# ARI by DR method, faceted by clusterer (embedded 2D only).
+p_ari_dr <- ggplot(ari_emb, aes(x = dr, y = ari, fill = dr)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  facet_grid(model_tag ~ clusterer) +
+  labs(title = "ARI by DR method (embedded 2D)", x = NULL, y = "ARI") +
+  theme(legend.position = "none")
+save_plot(p_ari_dr, "fig_ari_by_dr.png", w = 9, h = 6)
+
+# ARI by clusterer, faceted by DR.
+p_ari_clust <- ggplot(ari_emb, aes(x = clusterer, y = ari, fill = clusterer)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  facet_grid(model_tag ~ dr) +
+  labs(title = "ARI by clusterer (embedded 2D)", x = NULL, y = "ARI") +
+  theme(legend.position = "none")
+save_plot(p_ari_clust, "fig_ari_by_clusterer.png", w = 9, h = 6)
+
+# ARI by attribution method (will be more interesting once Sweep B is in).
+if (length(unique(df$attribution)) > 1) {
+  p_ari_attr <- ggplot(ari_emb, aes(x = attribution, y = ari, fill = attribution)) +
+    geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+    facet_grid(model_tag ~ dr + clusterer) +
+    labs(title = "ARI by attribution method (embedded 2D)", x = NULL, y = "ARI") +
+    theme(legend.position = "none")
+  save_plot(p_ari_attr, "fig_ari_by_attribution.png", w = 11, h = 6)
+}
+
+# ARI by base cell (one boxplot per dataset axis, seeds + combos as the
+# distribution). Embedded 2D only to keep the panel readable.
+p_ari_base <- ggplot(ari_emb, aes(x = base_tag, y = ari, fill = model_tag)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  labs(title = "ARI by base cell (embedded 2D)", x = NULL, y = "ARI", fill = "model") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+save_plot(p_ari_base, "fig_ari_by_base_cell.png", w = 11, h = 5)
+
+# Classifier accuracy by base cell x model. One row per (dataset_tag, model)
+# so seeds form the distribution.
+acc_long <- df %>% distinct(dataset_tag, base_tag, model_tag, classifier_accuracy)
+p_acc_base <- ggplot(acc_long, aes(x = base_tag, y = classifier_accuracy, fill = model_tag)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  labs(title = "Classifier accuracy by base cell", x = NULL, y = "accuracy", fill = "model") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+save_plot(p_acc_base, "fig_accuracy_by_base_cell.png", w = 11, h = 5)
+
+# Timings: long-form across the four pipeline stages, log-y so cheap and
+# expensive stages stay readable in the same panel.
+time_long <- df %>%
+  select(model_tag, attribution, dr, clusterer, combo, space,
+         time_model_fit, time_attribution, time_reduction, time_clustering) %>%
+  pivot_longer(starts_with("time_"), names_to = "stage", values_to = "seconds") %>%
+  mutate(stage = str_remove(stage, "^time_"))
+
+p_time_model <- ggplot(time_long, aes(x = stage, y = seconds, fill = model_tag)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  scale_y_log10() +
+  labs(title = "Pipeline stage timings by model", x = NULL, y = "seconds (log scale)", fill = "model")
+save_plot(p_time_model, "fig_timings_by_model.png", w = 9, h = 5)
+
+p_time_combo <- ggplot(time_long, aes(x = combo, y = seconds, fill = model_tag)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+  facet_wrap(~ stage, scales = "free_y") +
+  scale_y_log10() +
+  labs(title = "Pipeline stage timings by method combo", x = NULL, y = "seconds (log scale)", fill = "model") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+save_plot(p_time_combo, "fig_timings_by_combo.png", w = 12, h = 7)
+
+# Seed variability: ARI distribution per base cell x model x combo, with
+# seeds forming the spread. Highlights how ruido-dominado each cell is.
+p_seed_spread <- ari_emb %>%
+  ggplot(aes(x = base_tag, y = ari, colour = model_tag)) +
+  geom_boxplot(outlier.size = 0.6, alpha = 0.6,
+               position = position_dodge(width = 0.8)) +
+  facet_wrap(~ combo) +
+  labs(title = "Seed-level ARI spread per base cell (embedded 2D)",
+       x = NULL, y = "ARI", colour = "model") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+save_plot(p_seed_spread, "fig_seed_spread_ari.png", w = 13, h = 8)
+
+cat("\nDone. Figures written to: ", figures_dir, "\n", sep = "")

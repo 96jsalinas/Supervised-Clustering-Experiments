@@ -1,0 +1,225 @@
+# Sweep A — Data variety, both models, SHAP only.
+#
+# Goal: extend dataset coverage relative to the 24 April overnight sweep
+# along the two axes Pablo flagged in his 27 April reply (overlap and
+# total dimensionality). Drop the `rotated` generator family entirely
+# since the previous sweep showed rotation does not move the MLP-vs-
+# LightGBM gap. Concentrate seed replicates on the `cluster_std` cells
+# where seed variance was largest in the previous sweep
+# (fig_accuracy_by_base_cell shows whiskers spanning ~0.6 to ~0.98 in
+# `*_std_*` cells while `*_ninf_high` is essentially noise-free).
+#
+# Grid structure
+# --------------
+#   - 1 generator family (blobs).
+#   - 12 distinct parameter combos varying one axis at a time around a
+#     shared baseline (n_informative=5, n_clusters=6, cluster_std=1.0,
+#     n_features=50, center_box=[-2,2]):
+#       n_informative : {3, 10}                       (2 combos)
+#       n_clusters    : {4, 8}                        (2 combos)
+#       cluster_std   : {0.7, 1.3}                    (2 combos)  *** high seed var
+#       n_features    : {20, 100}                     (2 combos)  *** NEW axis
+#       center_box    : {[-1,1], [-4,4], [-0.5,0.5]}  (3 combos)  *** NEW axis (overlap)
+#       baseline      : (1 combo)
+#   - Seed allocation (targeted, not uniform):
+#       * 5 seeds for tight cells: base, ninf_low/high, nclust_low/high,
+#         nfeat_low/high, overlap_low/high/extreme -> 10 cells x 5 = 50 datasets
+#       * 12 seeds for high-variance cells: std_low, std_high
+#                                       -> 2 cells x 12 = 24 datasets
+#   - Total dataset cells: 74
+#   - Models: MLP, LightGBM (each tuned per (dataset, model) cell;
+#     same tuning grids as the 24 April sweep)
+#   - Method combos: SHAP x {UMAP, PCA} x {HDBSCAN, k-means} = 4
+#   - Total pipeline runs: 74 * 2 * 4 = 592   (+ 148 tuning passes)
+#
+# Wall-time estimate
+# ------------------
+# Previous sweep: 336 runs + 84 tuning passes in ~3h48m.
+# Calibrated per-cell costs from previous timings:
+#   - MLP cell: ~300s (tuning + 4 SHAP-based runs at ~70s attribution each)
+#   - LightGBM cell: ~15s (tuning + 4 fast runs)
+# This sweep:
+#   - 74 cells * (300 + 15)s ~ 6h 30m base
+#   - +25 min for 5 nfeat_high cells (n_features=100, ~2x SHAP cost)
+#   - Estimated total ~6.5-7h. Within the ~8h overnight budget.
+#
+# Launch overnight with:
+#   python -m batch.sweep batch/sweep_a_data_variety.yaml \
+#       --results-dir results_sweep_a 2>&1 | tee -a sweep_a_log.txt
+# Then:
+#   "/c/Program Files/R/R-4.5.1/bin/x64/Rscript.exe" analyze_sweep.R \
+#       results_sweep_a/metrics_table.csv figures/dashboard_sweep_a
+#   python -m evaluation.dashboard \
+#       --results-dir results_sweep_a \
+#       --out figures/dashboard_sweep_a
+
+data:
+  n_samples: 1000
+  n_features: 50
+  n_informative: 5
+  n_clusters: 6
+  cluster_std: 1.0
+  center_box: [-2.0, 2.0]
+  random_state: 42
+  rotate_informative: false
+
+datasets:
+# --- baseline (5 seeds) ---
+- {tag: blobs_base_s1,         override: {random_state: 1}}
+- {tag: blobs_base_s2,         override: {random_state: 2}}
+- {tag: blobs_base_s3,         override: {random_state: 3}}
+- {tag: blobs_base_s4,         override: {random_state: 4}}
+- {tag: blobs_base_s5,         override: {random_state: 5}}
+# --- n_informative low (3) ---
+- {tag: blobs_ninf_low_s1,     override: {random_state: 1, n_informative: 3}}
+- {tag: blobs_ninf_low_s2,     override: {random_state: 2, n_informative: 3}}
+- {tag: blobs_ninf_low_s3,     override: {random_state: 3, n_informative: 3}}
+- {tag: blobs_ninf_low_s4,     override: {random_state: 4, n_informative: 3}}
+- {tag: blobs_ninf_low_s5,     override: {random_state: 5, n_informative: 3}}
+# --- n_informative high (10) ---
+- {tag: blobs_ninf_high_s1,    override: {random_state: 1, n_informative: 10}}
+- {tag: blobs_ninf_high_s2,    override: {random_state: 2, n_informative: 10}}
+- {tag: blobs_ninf_high_s3,    override: {random_state: 3, n_informative: 10}}
+- {tag: blobs_ninf_high_s4,    override: {random_state: 4, n_informative: 10}}
+- {tag: blobs_ninf_high_s5,    override: {random_state: 5, n_informative: 10}}
+# --- n_clusters low (4) ---
+- {tag: blobs_nclust_low_s1,   override: {random_state: 1, n_clusters: 4}}
+- {tag: blobs_nclust_low_s2,   override: {random_state: 2, n_clusters: 4}}
+- {tag: blobs_nclust_low_s3,   override: {random_state: 3, n_clusters: 4}}
+- {tag: blobs_nclust_low_s4,   override: {random_state: 4, n_clusters: 4}}
+- {tag: blobs_nclust_low_s5,   override: {random_state: 5, n_clusters: 4}}
+# --- n_clusters high (8) ---
+- {tag: blobs_nclust_high_s1,  override: {random_state: 1, n_clusters: 8}}
+- {tag: blobs_nclust_high_s2,  override: {random_state: 2, n_clusters: 8}}
+- {tag: blobs_nclust_high_s3,  override: {random_state: 3, n_clusters: 8}}
+- {tag: blobs_nclust_high_s4,  override: {random_state: 4, n_clusters: 8}}
+- {tag: blobs_nclust_high_s5,  override: {random_state: 5, n_clusters: 8}}
+# --- cluster_std low (0.7) -- high seed variance, 8 seeds ---
+- {tag: blobs_std_low_s1,      override: {random_state: 1, cluster_std: 0.7}}
+- {tag: blobs_std_low_s2,      override: {random_state: 2, cluster_std: 0.7}}
+- {tag: blobs_std_low_s3,      override: {random_state: 3, cluster_std: 0.7}}
+- {tag: blobs_std_low_s4,      override: {random_state: 4, cluster_std: 0.7}}
+- {tag: blobs_std_low_s5,      override: {random_state: 5, cluster_std: 0.7}}
+- {tag: blobs_std_low_s6,      override: {random_state: 6, cluster_std: 0.7}}
+- {tag: blobs_std_low_s7,      override: {random_state: 7, cluster_std: 0.7}}
+- {tag: blobs_std_low_s8,      override: {random_state: 8, cluster_std: 0.7}}
+- {tag: blobs_std_low_s9,      override: {random_state: 9, cluster_std: 0.7}}
+- {tag: blobs_std_low_s10,     override: {random_state: 10, cluster_std: 0.7}}
+- {tag: blobs_std_low_s11,     override: {random_state: 11, cluster_std: 0.7}}
+- {tag: blobs_std_low_s12,     override: {random_state: 12, cluster_std: 0.7}}
+# --- cluster_std high (1.3) -- high seed variance, 12 seeds ---
+- {tag: blobs_std_high_s1,     override: {random_state: 1, cluster_std: 1.3}}
+- {tag: blobs_std_high_s2,     override: {random_state: 2, cluster_std: 1.3}}
+- {tag: blobs_std_high_s3,     override: {random_state: 3, cluster_std: 1.3}}
+- {tag: blobs_std_high_s4,     override: {random_state: 4, cluster_std: 1.3}}
+- {tag: blobs_std_high_s5,     override: {random_state: 5, cluster_std: 1.3}}
+- {tag: blobs_std_high_s6,     override: {random_state: 6, cluster_std: 1.3}}
+- {tag: blobs_std_high_s7,     override: {random_state: 7, cluster_std: 1.3}}
+- {tag: blobs_std_high_s8,     override: {random_state: 8, cluster_std: 1.3}}
+- {tag: blobs_std_high_s9,     override: {random_state: 9, cluster_std: 1.3}}
+- {tag: blobs_std_high_s10,    override: {random_state: 10, cluster_std: 1.3}}
+- {tag: blobs_std_high_s11,    override: {random_state: 11, cluster_std: 1.3}}
+- {tag: blobs_std_high_s12,    override: {random_state: 12, cluster_std: 1.3}}
+# --- n_features low (20) -- NEW axis ---
+- {tag: blobs_nfeat_low_s1,    override: {random_state: 1, n_features: 20}}
+- {tag: blobs_nfeat_low_s2,    override: {random_state: 2, n_features: 20}}
+- {tag: blobs_nfeat_low_s3,    override: {random_state: 3, n_features: 20}}
+- {tag: blobs_nfeat_low_s4,    override: {random_state: 4, n_features: 20}}
+- {tag: blobs_nfeat_low_s5,    override: {random_state: 5, n_features: 20}}
+# --- n_features high (100) -- NEW axis ---
+- {tag: blobs_nfeat_high_s1,   override: {random_state: 1, n_features: 100}}
+- {tag: blobs_nfeat_high_s2,   override: {random_state: 2, n_features: 100}}
+- {tag: blobs_nfeat_high_s3,   override: {random_state: 3, n_features: 100}}
+- {tag: blobs_nfeat_high_s4,   override: {random_state: 4, n_features: 100}}
+- {tag: blobs_nfeat_high_s5,   override: {random_state: 5, n_features: 100}}
+# --- overlap_high (center_box=[-1,1]) -- NEW axis: tight centroids -> more overlap ---
+- {tag: blobs_overlap_high_s1, override: {random_state: 1, center_box: [-1.0, 1.0]}}
+- {tag: blobs_overlap_high_s2, override: {random_state: 2, center_box: [-1.0, 1.0]}}
+- {tag: blobs_overlap_high_s3, override: {random_state: 3, center_box: [-1.0, 1.0]}}
+- {tag: blobs_overlap_high_s4, override: {random_state: 4, center_box: [-1.0, 1.0]}}
+- {tag: blobs_overlap_high_s5, override: {random_state: 5, center_box: [-1.0, 1.0]}}
+# --- overlap_low (center_box=[-4,4]) -- NEW axis: wide centroids -> less overlap ---
+- {tag: blobs_overlap_low_s1,  override: {random_state: 1, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s2,  override: {random_state: 2, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s3,  override: {random_state: 3, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s4,  override: {random_state: 4, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s5,  override: {random_state: 5, center_box: [-4.0, 4.0]}}
+# --- overlap_extreme (center_box=[-0.5,0.5]) -- 4th level on the overlap axis to test
+# whether the effect is monotonic or saturates at very high overlap ---
+- {tag: blobs_overlap_extreme_s1, override: {random_state: 1, center_box: [-0.5, 0.5]}}
+- {tag: blobs_overlap_extreme_s2, override: {random_state: 2, center_box: [-0.5, 0.5]}}
+- {tag: blobs_overlap_extreme_s3, override: {random_state: 3, center_box: [-0.5, 0.5]}}
+- {tag: blobs_overlap_extreme_s4, override: {random_state: 4, center_box: [-0.5, 0.5]}}
+- {tag: blobs_overlap_extreme_s5, override: {random_state: 5, center_box: [-0.5, 0.5]}}
+
+models:
+- tag: mlp
+  method: mlp
+  random_state: 42
+  params:
+    hidden_sizes: [128, 64]
+    activation: relu
+    dropout: 0.0
+    label_smoothing: 0.0
+    lr: 0.001
+    epochs: 300
+    patience: 40
+    batch_size: 64
+    weight_decay: 0.0
+    val_fraction: 0.2
+    standardize: false
+  tune:
+    enabled: true
+    cv: {n_splits: 5, shuffle: true, random_state: 42}
+    scoring: accuracy
+    grid:
+      hidden_sizes: [[128, 64], [128, 64, 32]]
+      label_smoothing: [0.0, 0.1]
+      dropout: [0.0, 0.2]
+      lr: [0.001, 0.003]
+- tag: lightgbm
+  method: lightgbm
+  random_state: 42
+  params: {}
+  tune:
+    enabled: true
+    cv: {n_splits: 5, shuffle: true, random_state: 42}
+    scoring: accuracy
+    grid:
+      num_leaves: [15, 31, 63]
+      learning_rate: [0.05, 0.1]
+      n_estimators: [50, 100, 200]
+
+attribution:
+  methods: [shap]
+  common:
+    target_class: 1
+    random_state: 42
+  per_method:
+    shap: {}
+
+reduction:
+  methods: [umap, pca]
+  common:
+    random_state: 42
+  per_method:
+    umap:
+      params: {n_components: 2, n_neighbors: 200, min_dist: 0.0}
+    pca:
+      params: {n_components: 2}
+
+clustering:
+  methods: [hdbscan, kmeans]
+  common: {}
+  per_method:
+    hdbscan:
+      params: {min_cluster_size: 70}
+    kmeans:
+      random_state: 42
+      params: {n_clusters: 6, n_init: 10}
+
+evaluation:
+  external: [ari, nmi, ami]
+  internal: [silhouette, davies_bouldin, calinski_harabasz]
+  test_fraction: 0.2
+  split_seed: 42
