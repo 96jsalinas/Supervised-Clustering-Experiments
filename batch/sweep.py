@@ -191,6 +191,12 @@ def run_one(run_name: str, run_cfg: dict, results_root: Path,
         metrics_df["tuned"] = False
     metrics_df.to_csv(output_dir / "metrics.csv", index=False)
 
+    cmeta = result.clustering_meta or {}
+    for suffix in ("2d", "full"):
+        elbow_df = cmeta.get(f"elbow_df_{suffix}")
+        if elbow_df is not None:
+            elbow_df.to_csv(output_dir / f"elbow_curve_{suffix}.csv", index=False)
+
     np.savez(
         output_dir / "arrays.npz",
         embedding_2d=result.embedding_2d,

@@ -9,6 +9,14 @@
 # (fig_accuracy_by_base_cell shows whiskers spanning ~0.6 to ~0.98 in
 # `*_std_*` cells while `*_ninf_high` is essentially noise-free).
 #
+# Methodology changes vs the partial April run (full relaunch required):
+#   - informative_fraction replaces n_informative. Fraction 0.2 is the new
+#     baseline (was 10%), grid is {0.1, 0.2, 0.4}. This decouples the
+#     signal-to-noise ratio from the n_features axis variation.
+#   - k-means uses elbow auto-selection (kneedle, k in [2,15]) instead of
+#     fixed k=6. Previously k=6 was hardcoded even for n_clusters=4 or 8,
+#     depressing ARI on those cells mechanically.
+#
 # Grid structure
 # --------------
 #   - 1 generator family (blobs).
@@ -56,7 +64,7 @@
 data:
   n_samples: 1000
   n_features: 50
-  n_informative: 5
+  informative_fraction: 0.2
   n_clusters: 6
   cluster_std: 1.0
   center_box: [-2.0, 2.0]
@@ -70,18 +78,18 @@ datasets:
 - {tag: blobs_base_s3,         override: {random_state: 3}}
 - {tag: blobs_base_s4,         override: {random_state: 4}}
 - {tag: blobs_base_s5,         override: {random_state: 5}}
-# --- n_informative low (3) ---
-- {tag: blobs_ninf_low_s1,     override: {random_state: 1, n_informative: 3}}
-- {tag: blobs_ninf_low_s2,     override: {random_state: 2, n_informative: 3}}
-- {tag: blobs_ninf_low_s3,     override: {random_state: 3, n_informative: 3}}
-- {tag: blobs_ninf_low_s4,     override: {random_state: 4, n_informative: 3}}
-- {tag: blobs_ninf_low_s5,     override: {random_state: 5, n_informative: 3}}
-# --- n_informative high (10) ---
-- {tag: blobs_ninf_high_s1,    override: {random_state: 1, n_informative: 10}}
-- {tag: blobs_ninf_high_s2,    override: {random_state: 2, n_informative: 10}}
-- {tag: blobs_ninf_high_s3,    override: {random_state: 3, n_informative: 10}}
-- {tag: blobs_ninf_high_s4,    override: {random_state: 4, n_informative: 10}}
-- {tag: blobs_ninf_high_s5,    override: {random_state: 5, n_informative: 10}}
+# --- informative_fraction low (0.1 -> 5 informative at n_features=50) ---
+- {tag: blobs_ninf_low_s1,     override: {random_state: 1, informative_fraction: 0.1}}
+- {tag: blobs_ninf_low_s2,     override: {random_state: 2, informative_fraction: 0.1}}
+- {tag: blobs_ninf_low_s3,     override: {random_state: 3, informative_fraction: 0.1}}
+- {tag: blobs_ninf_low_s4,     override: {random_state: 4, informative_fraction: 0.1}}
+- {tag: blobs_ninf_low_s5,     override: {random_state: 5, informative_fraction: 0.1}}
+# --- informative_fraction high (0.4 -> 20 informative at n_features=50) ---
+- {tag: blobs_ninf_high_s1,    override: {random_state: 1, informative_fraction: 0.4}}
+- {tag: blobs_ninf_high_s2,    override: {random_state: 2, informative_fraction: 0.4}}
+- {tag: blobs_ninf_high_s3,    override: {random_state: 3, informative_fraction: 0.4}}
+- {tag: blobs_ninf_high_s4,    override: {random_state: 4, informative_fraction: 0.4}}
+- {tag: blobs_ninf_high_s5,    override: {random_state: 5, informative_fraction: 0.4}}
 # --- n_clusters low (4) ---
 - {tag: blobs_nclust_low_s1,   override: {random_state: 1, n_clusters: 4}}
 - {tag: blobs_nclust_low_s2,   override: {random_state: 2, n_clusters: 4}}
@@ -120,13 +128,13 @@ datasets:
 - {tag: blobs_std_high_s10,    override: {random_state: 10, cluster_std: 1.3}}
 - {tag: blobs_std_high_s11,    override: {random_state: 11, cluster_std: 1.3}}
 - {tag: blobs_std_high_s12,    override: {random_state: 12, cluster_std: 1.3}}
-# --- n_features low (20) -- NEW axis ---
+# --- n_features low (20) -- informative_fraction=0.2 auto-scales to 4 informative ---
 - {tag: blobs_nfeat_low_s1,    override: {random_state: 1, n_features: 20}}
 - {tag: blobs_nfeat_low_s2,    override: {random_state: 2, n_features: 20}}
 - {tag: blobs_nfeat_low_s3,    override: {random_state: 3, n_features: 20}}
 - {tag: blobs_nfeat_low_s4,    override: {random_state: 4, n_features: 20}}
 - {tag: blobs_nfeat_low_s5,    override: {random_state: 5, n_features: 20}}
-# --- n_features high (100) -- NEW axis ---
+# --- n_features high (100) -- informative_fraction=0.2 auto-scales to 20 informative ---
 - {tag: blobs_nfeat_high_s1,   override: {random_state: 1, n_features: 100}}
 - {tag: blobs_nfeat_high_s2,   override: {random_state: 2, n_features: 100}}
 - {tag: blobs_nfeat_high_s3,   override: {random_state: 3, n_features: 100}}
@@ -216,10 +224,11 @@ clustering:
       params: {min_cluster_size: 70}
     kmeans:
       random_state: 42
-      params: {n_clusters: 6, n_init: 10}
+      params: {n_init: 10}
+      auto_select: {enabled: true, k_min: 2, k_max: 15, S: 1.0}
 
 evaluation:
-  external: [ari, nmi, ami]
+  external: [ari, f_measure, nmi, ami]
   internal: [silhouette, davies_bouldin, calinski_harabasz]
   test_fraction: 0.2
   split_seed: 42

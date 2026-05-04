@@ -16,9 +16,13 @@ def generate_data(
 
     Config keys
     -----------
-    n_samples       : total number of samples
-    n_features      : total number of features (informative + noise)
-    n_informative   : dimensions in which the blobs are generated
+    n_samples            : total number of samples
+    n_features           : total number of features (informative + noise)
+    n_informative        : integer count of informative dimensions (mutually
+                           exclusive with informative_fraction)
+    informative_fraction : fraction of n_features to use as informative dims,
+                           e.g. 0.2 → round(0.2 * n_features). Mutually
+                           exclusive with n_informative.
     n_clusters      : number of distinct subclusters
     n_classes       : number of binary class labels (default 2)
     cluster_std     : within-cluster standard deviation (default 1.0)
@@ -40,8 +44,18 @@ def generate_data(
     """
     n_samples = data_config["n_samples"]
     n_features = data_config["n_features"]
-    n_informative = data_config["n_informative"]
     n_clusters = data_config["n_clusters"]
+
+    has_int = "n_informative" in data_config
+    has_frac = "informative_fraction" in data_config
+    if has_int and has_frac:
+        raise ValueError(
+            "data config: set either 'n_informative' or 'informative_fraction', not both."
+        )
+    if has_frac:
+        n_informative = round(data_config["informative_fraction"] * n_features)
+    else:
+        n_informative = data_config["n_informative"]
     n_classes = data_config.get("n_classes", 2)
     cluster_std = data_config.get("cluster_std", 1.0)
     random_state = data_config.get("random_state", None)

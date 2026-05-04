@@ -30,6 +30,9 @@ class RunResult:
     # `model.tune` block; None otherwise.
     tuning_selected: dict = None
     tuning_grid: "pd.DataFrame | None" = None
+    # Clustering artefacts — populated when the clusterer exposes extra state
+    # after fit_predict (e.g. kneedle selected_k_ and elbow_df_).
+    clustering_meta: dict = field(default_factory=dict)
 
 
 class PipelineRunner:
@@ -138,15 +141,21 @@ class PipelineRunner:
         embedding_2d = self.reducer.fit_transform(attributions)
         timings["reduction"] = perf_counter() - t0
 
+        clustering_meta: dict = {}
+
         print("  Clustering in 2D embedding space...")
         t0 = perf_counter()
         cluster_labels_2d = self.clusterer.fit_predict(embedding_2d)
         timings["clustering_2d"] = perf_counter() - t0
+        clustering_meta["selected_k_2d"] = getattr(self.clusterer, "selected_k_", None)
+        clustering_meta["elbow_df_2d"] = getattr(self.clusterer, "elbow_df_", None)
 
         print("  Clustering in full attribution space (no DR)...")
         t0 = perf_counter()
         cluster_labels_full = self.clusterer.fit_predict(attributions)
         timings["clustering_full"] = perf_counter() - t0
+        clustering_meta["selected_k_full"] = getattr(self.clusterer, "selected_k_", None)
+        clustering_meta["elbow_df_full"] = getattr(self.clusterer, "elbow_df_", None)
 
         return RunResult(
             X_raw=X,
@@ -163,4 +172,5 @@ class PipelineRunner:
             proba_train=proba_train,
             tuning_selected=tuning_selected,
             tuning_grid=tuning_grid,
+            clustering_meta=clustering_meta,
         )

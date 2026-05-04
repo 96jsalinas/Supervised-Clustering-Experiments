@@ -64,7 +64,7 @@
 data:
   n_samples: 1000
   n_features: 50
-  n_informative: 5
+  informative_fraction: 0.2
   n_clusters: 6
   cluster_std: 1.0
   center_box: [-2.0, 2.0]
@@ -76,14 +76,14 @@ datasets:
 - {tag: blobs_base_s1,         override: {random_state: 1}}
 - {tag: blobs_base_s2,         override: {random_state: 2}}
 - {tag: blobs_base_s3,         override: {random_state: 3}}
-# --- n_informative low (3 seeds) ---
-- {tag: blobs_ninf_low_s1,     override: {random_state: 1, n_informative: 3}}
-- {tag: blobs_ninf_low_s2,     override: {random_state: 2, n_informative: 3}}
-- {tag: blobs_ninf_low_s3,     override: {random_state: 3, n_informative: 3}}
-# --- n_informative high (3 seeds) ---
-- {tag: blobs_ninf_high_s1,    override: {random_state: 1, n_informative: 10}}
-- {tag: blobs_ninf_high_s2,    override: {random_state: 2, n_informative: 10}}
-- {tag: blobs_ninf_high_s3,    override: {random_state: 3, n_informative: 10}}
+# --- informative_fraction low (0.1 -> 5 informative at n_features=50) ---
+- {tag: blobs_ninf_low_s1,     override: {random_state: 1, informative_fraction: 0.1}}
+- {tag: blobs_ninf_low_s2,     override: {random_state: 2, informative_fraction: 0.1}}
+- {tag: blobs_ninf_low_s3,     override: {random_state: 3, informative_fraction: 0.1}}
+# --- informative_fraction high (0.4 -> 20 informative at n_features=50) ---
+- {tag: blobs_ninf_high_s1,    override: {random_state: 1, informative_fraction: 0.4}}
+- {tag: blobs_ninf_high_s2,    override: {random_state: 2, informative_fraction: 0.4}}
+- {tag: blobs_ninf_high_s3,    override: {random_state: 3, informative_fraction: 0.4}}
 # --- n_clusters high (3 seeds) ---
 - {tag: blobs_nclust_high_s1,  override: {random_state: 1, n_clusters: 8}}
 - {tag: blobs_nclust_high_s2,  override: {random_state: 2, n_clusters: 8}}
@@ -165,10 +165,11 @@ clustering:
       params: {min_cluster_size: 70}
     kmeans:
       random_state: 42
-      params: {n_clusters: 6, n_init: 10}
+      params: {n_init: 10}
+      auto_select: {enabled: true, k_min: 2, k_max: 15, S: 1.0}
 
 evaluation:
-  external: [ari, nmi, ami]
+  external: [ari, f_measure, nmi, ami]
   internal: [silhouette, davies_bouldin, calinski_harabasz]
   test_fraction: 0.2
   split_seed: 42

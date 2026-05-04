@@ -212,4 +212,84 @@ p_seed_spread <- ari_emb %>%
   theme(axis.text.x = element_text(angle = 35, hjust = 1))
 save_plot(p_seed_spread, "fig_seed_spread_ari.png", w = 13, h = 8)
 
+# ---------------------------------------------------------------------------
+# F-measure panels (pair-counting, Larsen & Aone 1999) — mirror the ARI set.
+# ---------------------------------------------------------------------------
+
+if ("f_measure" %in% names(df)) {
+  fm_emb <- df %>% filter(space == "embedding_2d")
+
+  p_fm_model <- ggplot(df, aes(x = model_tag, y = f_measure, fill = model_tag)) +
+    geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+    facet_wrap(~ space) +
+    labs(title = "F-measure (pair-counting) by model", x = NULL, y = "F-measure") +
+    theme(legend.position = "none")
+  save_plot(p_fm_model, "fig_fmeasure_by_model.png")
+
+  p_fm_dr <- ggplot(fm_emb, aes(x = dr, y = f_measure, fill = dr)) +
+    geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+    facet_grid(model_tag ~ clusterer) +
+    labs(title = "F-measure (pair-counting) by DR method (embedded 2D)", x = NULL, y = "F-measure") +
+    theme(legend.position = "none")
+  save_plot(p_fm_dr, "fig_fmeasure_by_dr.png", w = 9, h = 6)
+
+  p_fm_clust <- ggplot(fm_emb, aes(x = clusterer, y = f_measure, fill = clusterer)) +
+    geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+    facet_grid(model_tag ~ dr) +
+    labs(title = "F-measure (pair-counting) by clusterer (embedded 2D)", x = NULL, y = "F-measure") +
+    theme(legend.position = "none")
+  save_plot(p_fm_clust, "fig_fmeasure_by_clusterer.png", w = 9, h = 6)
+
+  p_fm_base <- ggplot(fm_emb, aes(x = base_tag, y = f_measure, fill = model_tag)) +
+    geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+    labs(title = "F-measure (pair-counting) by base cell (embedded 2D)",
+         x = NULL, y = "F-measure", fill = "model") +
+    theme(axis.text.x = element_text(angle = 35, hjust = 1))
+  save_plot(p_fm_base, "fig_fmeasure_by_base_cell.png", w = 11, h = 5)
+}
+
+# ---------------------------------------------------------------------------
+# Attribution timing and cost-benefit figures (Sweep B: LRP vs SHAP).
+# Self-activate when more than one attribution method is present.
+# ---------------------------------------------------------------------------
+
+if (length(unique(df$attribution)) > 1) {
+  # Boxplot of attribution wall time by method, faceted by base cell.
+  p_time_attr <- ggplot(
+    df %>% filter(space == "embedding_2d"),
+    aes(x = attribution, y = time_attribution, fill = attribution)
+  ) +
+    geom_boxplot(outlier.size = 0.6, alpha = 0.85) +
+    facet_wrap(~ base_tag, scales = "free_y") +
+    scale_y_log10() +
+    labs(title = "Attribution wall time: LRP vs SHAP by data cell",
+         x = NULL, y = "seconds (log scale)") +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 25, hjust = 1))
+  save_plot(p_time_attr, "fig_timing_attribution.png", w = 13, h = 8)
+
+  # Cost-benefit scatter: ARI vs time_attribution, coloured by attribution
+  # method. Fixed to the most informative combo (umap + kmeans) to keep the
+  # primary panel readable; the full multi-panel version can be generated
+  # separately if needed.
+  cb_data <- df %>%
+    filter(space == "embedding_2d", dr == "umap", clusterer == "kmeans")
+  if (nrow(cb_data) > 0) {
+    p_cost_benefit <- ggplot(
+      cb_data,
+      aes(x = time_attribution, y = ari, colour = attribution)
+    ) +
+      geom_point(alpha = 0.7, size = 1.8) +
+      geom_abline(slope = 0, intercept = 0, linetype = "dashed",
+                  colour = "grey60", linewidth = 0.4) +
+      scale_x_log10() +
+      facet_wrap(~ model_tag) +
+      labs(title = "ARI vs attribution wall time (UMAP + k-means, embedded 2D)",
+           x = "time_attribution (seconds, log scale)", y = "ARI",
+           colour = "attribution") +
+      theme(legend.position = "bottom")
+    save_plot(p_cost_benefit, "fig_ari_vs_time_attribution.png", w = 10, h = 5)
+  }
+}
+
 cat("\nDone. Figures written to: ", figures_dir, "\n", sep = "")
