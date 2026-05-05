@@ -48,6 +48,7 @@ warnings.filterwarnings(
 )
 
 import numpy as np
+import pandas as pd
 import yaml
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
@@ -238,6 +239,12 @@ def main():
         results_root = SCRIPT_DIR / results_root
     results_root.mkdir(parents=True, exist_ok=True)
 
+    # Aggregate CSV written incrementally after each successful run.
+    # Deleted up-front so a relaunch always starts fresh.
+    table_path = results_root / "metrics_table.csv"
+    if table_path.exists():
+        table_path.unlink()
+
     # Group combos by (dataset_tag, model_tag). Tuning is hoisted to this
     # level — it depends on the model and the data, not on the downstream
     # (attr, red, clust) choices, so running it per combo would be both
@@ -311,6 +318,14 @@ def main():
                 run_one(name, combo_cfg, results_root,
                         dataset_tag=ds_tag, model_tag=m_tag,
                         tuning_info=selected)
+                run_csv = results_root / name / "metrics.csv"
+                if run_csv.is_file():
+                    run_df = pd.read_csv(run_csv)
+                    run_df.insert(0, "run", name)
+                    run_df.to_csv(
+                        table_path, mode="a",
+                        header=not table_path.exists(), index=False,
+                    )
             except Exception as exc:  # noqa: BLE001
                 print(f"[{name}] FAILED: {exc}")
                 failed.append((name, str(exc)))

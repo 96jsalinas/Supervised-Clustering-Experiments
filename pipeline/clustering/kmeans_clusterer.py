@@ -58,7 +58,7 @@ class KMeansClusterer(BaseClusterer):
             self.selected_k_ = selected_k
             self.elbow_df_ = pd.DataFrame({"k": ks, "inertia": inertias})
 
-            remaining = {k: v for k, v in params.items() if k != "n_clusters"}
+            remaining = {k: v for k, v in params.items() if k not in ("n_clusters", "n_init")}
             return KMeans(
                 n_clusters=selected_k, n_init=n_init,
                 random_state=random_state, **remaining,
