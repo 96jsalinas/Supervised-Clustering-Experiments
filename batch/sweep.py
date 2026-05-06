@@ -240,10 +240,10 @@ def main():
     results_root.mkdir(parents=True, exist_ok=True)
 
     # Aggregate CSV written incrementally after each successful run.
-    # Deleted up-front so a relaunch always starts fresh.
+    # Not deleted at start so two sweeps targeting the same results dir
+    # (e.g. sweep_b_lrp_vs_shap + sweep_b_lgbm_control) accumulate
+    # correctly. Delete it manually before a clean relaunch.
     table_path = results_root / "metrics_table.csv"
-    if table_path.exists():
-        table_path.unlink()
 
     # Group combos by (dataset_tag, model_tag). Tuning is hoisted to this
     # level — it depends on the model and the data, not on the downstream
@@ -322,10 +322,13 @@ def main():
                 if run_csv.is_file():
                     run_df = pd.read_csv(run_csv)
                     run_df.insert(0, "run", name)
-                    run_df.to_csv(
-                        table_path, mode="a",
-                        header=not table_path.exists(), index=False,
-                    )
+                    if table_path.exists():
+                        existing = pd.read_csv(table_path)
+                        existing = existing[existing["run"] != name]
+                        combined = pd.concat([existing, run_df], ignore_index=True)
+                    else:
+                        combined = run_df
+                    combined.to_csv(table_path, index=False)
             except Exception as exc:  # noqa: BLE001
                 print(f"[{name}] FAILED: {exc}")
                 failed.append((name, str(exc)))
