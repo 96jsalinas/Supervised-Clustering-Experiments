@@ -20,11 +20,11 @@
 #
 # Grid structure
 # --------------
-#   - 28 dataset cells (identical to sweep_b_lrp_vs_shap.yaml)
+#   - 31 dataset cells (identical to sweep_b_lrp_vs_shap.yaml)
 #   - Models: LightGBM only (1)
 #   - Attributions: SHAP only (LRP is incompatible with LightGBM)
 #   - Method combos: SHAP x {UMAP, PCA} x {HDBSCAN, k-means} = 4
-#   - Total pipeline runs: 28 * 1 * 4 = 112   (+ 28 tuning passes)
+#   - Total pipeline runs: 31 * 1 * 4 = 124   (+ 31 tuning passes)
 #
 # Launch order (after sweep_b_lrp_vs_shap.yaml has finished):
 #   python -m batch.sweep batch/sweep_b_lgbm_control.yaml \
@@ -56,10 +56,10 @@ datasets:
 - {tag: blobs_ninf_high_s1,    override: {random_state: 1, informative_fraction: 0.4}}
 - {tag: blobs_ninf_high_s2,    override: {random_state: 2, informative_fraction: 0.4}}
 - {tag: blobs_ninf_high_s3,    override: {random_state: 3, informative_fraction: 0.4}}
-# --- n_clusters high (3 seeds) ---
-- {tag: blobs_nclust_high_s1,  override: {random_state: 1, n_clusters: 8}}
-- {tag: blobs_nclust_high_s2,  override: {random_state: 2, n_clusters: 8}}
-- {tag: blobs_nclust_high_s3,  override: {random_state: 3, n_clusters: 8}}
+# --- n_clusters low (3 seeds) ---
+- {tag: blobs_nclust_low_s1,   override: {random_state: 1, n_clusters: 4}}
+- {tag: blobs_nclust_low_s2,   override: {random_state: 2, n_clusters: 4}}
+- {tag: blobs_nclust_low_s3,   override: {random_state: 3, n_clusters: 4}}
 # --- cluster_std low (5 seeds, high seed variance) ---
 - {tag: blobs_std_low_s1,      override: {random_state: 1, cluster_std: 0.7}}
 - {tag: blobs_std_low_s2,      override: {random_state: 2, cluster_std: 0.7}}
@@ -80,6 +80,10 @@ datasets:
 - {tag: blobs_overlap_high_s1, override: {random_state: 1, center_box: [-1.0, 1.0]}}
 - {tag: blobs_overlap_high_s2, override: {random_state: 2, center_box: [-1.0, 1.0]}}
 - {tag: blobs_overlap_high_s3, override: {random_state: 3, center_box: [-1.0, 1.0]}}
+# --- overlap_low (3 seeds, well-separated clusters) ---
+- {tag: blobs_overlap_low_s1,  override: {random_state: 1, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s2,  override: {random_state: 2, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s3,  override: {random_state: 3, center_box: [-4.0, 4.0]}}
 
 models:
 - tag: lightgbm

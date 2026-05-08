@@ -1,0 +1,102 @@
+# Elbow sensitivity test — nclust_high (true k=8), S=0.25
+#
+# Goal: verify empirically that lowering kneedle S from 1.0 to 0.25 does not
+# recover k=8 selection. The elbow curve analysis for these cells shows the
+# inertia flattens after k=6 in both the 2D and full-attribution spaces, so
+# the expectation is that S=0.25 selects k<=5, not k=8.
+#
+# To compare directly against Sweep A: seeds s1-s3 are the same dataset
+# realisations used there. Check selected_k in results_elbow_test/ against
+# the same cells in results_sweep_a/ (S=1.0 selected k=5 in most runs).
+#
+# MLP tuning is disabled and params are hardcoded to the winning combination
+# from Sweep A (identical across all three seeds: [128,64,32], dropout=0.2,
+# label_smoothing=0.1, lr=0.003). This avoids ~75 min of re-tuning while
+# keeping SHAP values comparable to the Sweep A runs.
+#
+# Estimated wall time: ~7-10 min
+#   MLP: 6 runs x ~46s attribution = ~5 min
+#   LightGBM: 3 tuning passes + 6 runs = ~2 min
+#
+# Run from repo root:
+#   python -m batch.sweep batch/elbow_test_s025.yaml --results-dir results_elbow_test
+
+data:
+  n_samples: 1000
+  n_features: 50
+  informative_fraction: 0.2
+  n_clusters: 8
+  cluster_std: 1.0
+  center_box: [-2.0, 2.0]
+  random_state: 42
+  rotate_informative: false
+
+datasets:
+- {tag: blobs_nclust_high_s1, override: {random_state: 1}}
+- {tag: blobs_nclust_high_s2, override: {random_state: 2}}
+- {tag: blobs_nclust_high_s3, override: {random_state: 3}}
+
+models:
+- tag: mlp
+  method: mlp
+  random_state: 42
+  params:
+    hidden_sizes: [128, 64, 32]
+    activation: relu
+    dropout: 0.2
+    label_smoothing: 0.1
+    lr: 0.003
+    epochs: 300
+    patience: 40
+    batch_size: 64
+    weight_decay: 0.0
+    val_fraction: 0.2
+    standardize: false
+  tune:
+    enabled: false
+
+- tag: lightgbm
+  method: lightgbm
+  random_state: 42
+  params: {}
+  tune:
+    enabled: true
+    cv: {n_splits: 5, shuffle: true, random_state: 42}
+    scoring: accuracy
+    grid:
+      num_leaves: [15, 31, 63]
+      learning_rate: [0.05, 0.1]
+      n_estimators: [50, 100, 200]
+
+attribution:
+  methods: [shap]
+  common:
+    target_class: 1
+    random_state: 42
+  per_method:
+    shap: {}
+
+reduction:
+  methods: [umap, pca]
+  common:
+    random_state: 42
+  per_method:
+    umap:
+      params: {n_components: 2, n_neighbors: 200, min_dist: 0.0}
+    pca:
+      params: {n_components: 2}
+
+clustering:
+  methods: [kmeans]
+  common: {}
+  per_method:
+    kmeans:
+      random_state: 42
+      params: {n_init: 10}
+      auto_select: {enabled: true, k_min: 2, k_max: 15, S: 0.25}
+
+evaluation:
+  external: [ari, f_measure, nmi, ami]
+  internal: [silhouette, davies_bouldin, calinski_harabasz]
+  test_fraction: 0.2
+  split_seed: 42

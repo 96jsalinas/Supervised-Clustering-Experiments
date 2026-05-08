@@ -22,6 +22,10 @@ Outstanding work for the experimental framework. Items are grouped by category.
 - [x] **Classifier-level metrics** -- stratified train/test split inside `PipelineRunner`; accuracy/AUC/F1/log_loss emitted to `metrics.csv` per run.
 - [x] **In-pipeline classifier tuning** -- optional `model.tune` block runs stratified K-fold CV over a hyperparameter grid before the rest of the pipeline (`pipeline/tuning.py`, `evaluation/classifier.py`). Model-agnostic.
 - [~] **MLP hyperparameter tuning** -- 72-combo parity sweep run (activation × label_smoothing × lr × dropout × hidden_sizes). MLP ceiling on baseline data is ~0.79 accuracy vs LightGBM's 0.87. Parity not achievable; treated as a thesis finding rather than an outstanding task.
+- [x] **Pair-counting F-measure** -- Larsen & Aone (1999) variant implemented in `evaluation/metrics.py` via contingency matrix. New `f_measure` column in `metrics.csv`. Reference: Taha & Hanbury (2015), BMC Medical Imaging.
+- [x] **F-measure and attribution timing figures** -- `analyze_sweep.R` extended with F-measure boxplot panels (mirroring ARI set) and LRP-vs-SHAP timing + cost-benefit figures (self-activate when >1 attribution method in the CSV).
+- [x] **`informative_fraction` parametrisation** -- `data/synthetic.py` accepts `informative_fraction` (float) as an alternative to `n_informative` (int); errors out if both are set. All sweep YAMLs updated to fraction-based grid `{0.1, 0.2, 0.4}` with 0.2 as baseline.
+- [x] **ARI ground-truth label verified** -- confirmed `y_subcluster` (not `y_class`) is passed to all three external metrics in `evaluation/metrics.py:86`. No code change needed.
 - **Dropped:** DBSCAN epsilon tuning -- DBSCAN was removed from the default grid (fixed `eps` is not a fair comparison vs HDBSCAN's auto-selection).
 
 ## Infrastructure
@@ -38,5 +42,5 @@ Outstanding work for the experimental framework. Items are grouped by category.
 - [x] **Full comparison sweep** -- `batch/full_comparison_grid.yaml` (42 dataset cells × 2 models × 4 method combos = 336 runs) executed overnight 2026-04-23/24. Outputs in `results_full_comparison/` and `figures/dashboard_full_comparison/`. Findings drove the design of the two follow-up sweeps below.
 - [ ] **Sweep A — data variety** -- `batch/sweep_a_data_variety.yaml` (74 dataset cells × 2 models × 4 method combos = 592 runs). Adds `n_features` and `center_box` (overlap) as data axes, drops the `rotated` family, concentrates seeds on the high-variance `std_*` cells. Estimated ~6.5-7h.
 - [ ] **Sweep B — LRP vs SHAP** -- `batch/sweep_b_lrp_vs_shap.yaml` + companion `batch/sweep_b_lgbm_control.yaml` (28 dataset cells, MLP with SHAP+LRP plus LightGBM-SHAP control on the same cells, 336 runs total). Estimated ~5h.
-- [ ] **Per-dataset clustering params** -- k-means is called with fixed `k=6` even when the true `n_clusters` is 4 or 8, which biases ARI on those cells. `batch/sweep.py` needs a small extension to thread per-dataset clustering overrides through `_build_step_config`.
+- [x] **Per-dataset clustering params** -- replaced fixed `k=6` with kneedle elbow auto-selection (`auto_select: {enabled: true, k_min: 2, k_max: 15}`) in `pipeline/clustering/kmeans_clusterer.py`. `selected_k` written to `metrics.csv`; `elbow_curve_{2d,full}.csv` written per run.
 - [ ] **Real-world dataset** -- if time permits, apply the pipeline to a real dataset.

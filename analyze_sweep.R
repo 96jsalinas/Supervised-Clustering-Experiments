@@ -112,6 +112,118 @@ noise_check <- df %>%
 print(kable(noise_check, digits = 1))
 
 # ---------------------------------------------------------------------------
+# Summary CSVs — human-readable aggregates that back the findings docs.
+# Written to <figures_dir>/summaries/. Mirrors the pandas snippets used
+# during analysis so claims about medians / IQRs can be cross-checked
+# against a stored file rather than terminal output.
+# ---------------------------------------------------------------------------
+
+summary_dir <- file.path(figures_dir, "summaries")
+dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
+
+agg_stats <- function(x) {
+  tibble::tibble(
+    median = median(x, na.rm = TRUE),
+    q25    = quantile(x, 0.25, na.rm = TRUE),
+    q75    = quantile(x, 0.75, na.rm = TRUE),
+    iqr    = quantile(x, 0.75, na.rm = TRUE) - quantile(x, 0.25, na.rm = TRUE),
+    mean   = mean(x, na.rm = TRUE),
+    sd     = sd(x, na.rm = TRUE),
+    min    = min(x, na.rm = TRUE),
+    max    = max(x, na.rm = TRUE),
+    n      = sum(!is.na(x))
+  )
+}
+
+write_summary <- function(tbl, name) {
+  path <- file.path(summary_dir, name)
+  write_csv(tbl, path)
+  cat(sprintf("wrote %s\n", path))
+}
+
+# 1. ARI by (space, model, attribution, combo) — the headline aggregate that
+#    backs the umap+kmeans IQR comparison.
+ari_by_combo <- df %>%
+  group_by(space, model_tag, attribution, combo) %>%
+  summarise(agg_stats(ari), .groups = "drop") %>%
+  arrange(space, model_tag, attribution, combo)
+write_summary(ari_by_combo, "ari_by_combo.csv")
+
+# 2. ARI by (space, model, attribution, combo, base_tag) — per-cell version.
+ari_by_cell_combo <- df %>%
+  group_by(space, model_tag, attribution, combo, base_tag) %>%
+  summarise(agg_stats(ari), .groups = "drop") %>%
+  arrange(space, model_tag, attribution, base_tag, combo)
+write_summary(ari_by_cell_combo, "ari_by_cell_combo.csv")
+
+# 3. ARI by (space, model, attribution, base_tag) — across all combos. Used
+#    for axis-level effect tables (n_features, overlap, std, etc.).
+ari_by_cell <- df %>%
+  group_by(space, model_tag, attribution, base_tag) %>%
+  summarise(agg_stats(ari), .groups = "drop") %>%
+  arrange(space, model_tag, attribution, base_tag)
+write_summary(ari_by_cell, "ari_by_cell.csv")
+
+# 4. F-measure mirrors of (1) and (3).
+if ("f_measure" %in% names(df)) {
+  fm_by_combo <- df %>%
+    group_by(space, model_tag, attribution, combo) %>%
+    summarise(agg_stats(f_measure), .groups = "drop") %>%
+    arrange(space, model_tag, attribution, combo)
+  write_summary(fm_by_combo, "fmeasure_by_combo.csv")
+
+  fm_by_cell <- df %>%
+    group_by(space, model_tag, attribution, base_tag) %>%
+    summarise(agg_stats(f_measure), .groups = "drop") %>%
+    arrange(space, model_tag, attribution, base_tag)
+  write_summary(fm_by_cell, "fmeasure_by_cell.csv")
+}
+
+# 5. Timings by (model, attribution) for each pipeline stage.
+timings_summary <- df %>%
+  select(model_tag, attribution, time_model_fit, time_attribution,
+         time_reduction, time_clustering) %>%
+  pivot_longer(starts_with("time_"), names_to = "stage", values_to = "seconds") %>%
+  mutate(stage = str_remove(stage, "^time_")) %>%
+  group_by(model_tag, attribution, stage) %>%
+  summarise(agg_stats(seconds), .groups = "drop") %>%
+  arrange(stage, model_tag, attribution)
+write_summary(timings_summary, "timings.csv")
+
+# 6. HDBSCAN noise / n_clusters by (model, attribution, combo, space, base_tag).
+hdbscan_summary <- df %>%
+  filter(str_detect(combo, "hdbscan")) %>%
+  group_by(space, model_tag, attribution, combo, base_tag) %>%
+  summarise(
+    median_n_clusters = median(n_clusters),
+    mean_n_clusters   = mean(n_clusters),
+    median_n_noise    = median(n_noise),
+    mean_n_noise      = mean(n_noise),
+    full_collapse     = sum(n_noise == 1000),
+    n_runs            = n(),
+    .groups           = "drop"
+  ) %>%
+  arrange(space, model_tag, attribution, combo, base_tag)
+write_summary(hdbscan_summary, "hdbscan_noise.csv")
+
+# 7. Selected k from the kneedle elbow, by (model, attribution, base_tag, space).
+if ("selected_k" %in% names(df)) {
+  k_summary <- df %>%
+    filter(!is.na(selected_k), str_detect(combo, "kmeans")) %>%
+    group_by(space, model_tag, attribution, base_tag) %>%
+    summarise(
+      median_k = median(selected_k),
+      mode_k   = as.numeric(names(sort(table(selected_k), decreasing = TRUE))[1]),
+      min_k    = min(selected_k),
+      max_k    = max(selected_k),
+      n_runs   = n(),
+      .groups  = "drop"
+    ) %>%
+    arrange(space, model_tag, attribution, base_tag)
+  write_summary(k_summary, "selected_k.csv")
+}
+
+# ---------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------
 

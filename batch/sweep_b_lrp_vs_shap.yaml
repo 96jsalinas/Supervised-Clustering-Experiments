@@ -20,19 +20,27 @@
 #
 # Grid structure
 # --------------
-#   - 8 distinct parameter combos (subset of Sweep A's 11):
-#       baseline, ninf_low, ninf_high, nclust_high, std_low, std_high,
-#       nfeat_high, overlap_high
+#   - 9 distinct parameter combos (subset of Sweep A's 11):
+#       baseline, ninf_low, ninf_high, nclust_low, std_low, std_high,
+#       nfeat_high, overlap_high, overlap_low
+#   - nclust_high (k=8) removed: Sweep A showed binary-label attribution
+#     cannot distinguish same-class subclusters, so k-means selects k=5-6
+#     regardless of attribution method. Results would not differentiate
+#     SHAP from LRP. nclust_low (k=4) replaces it: elbow selects k=4
+#     correctly in ~70% of runs and gives interpretable k-means results.
+#   - overlap_low added: provides the well-separated end of the overlap
+#     axis (overlap_high is already included). Brackets the comparison so
+#     we can test whether LRP and SHAP converge when the signal is strong.
 #   - Seed allocation:
 #       * 3 seeds for low-variance cells: base, ninf_low, ninf_high,
-#         nclust_high, nfeat_high, overlap_high  -> 6 cells x 3 = 18
+#         nclust_low, nfeat_high, overlap_high, overlap_low -> 7 x 3 = 21
 #       * 5 seeds for high-variance cells: std_low, std_high
 #                                       -> 2 cells x 5 = 10
-#   - Total dataset cells: 28
+#   - Total dataset cells: 31
 #   - Models: MLP only (1)
 #   - Attributions: SHAP and LRP (2)
 #   - Method combos: {SHAP, LRP} x {UMAP, PCA} x {HDBSCAN, k-means} = 8
-#   - Total pipeline runs: 28 * 1 * 8 = 224   (+ 28 tuning passes)
+#   - Total pipeline runs: 31 * 1 * 8 = 248   (+ 31 tuning passes)
 #
 # Wall-time estimate
 # ------------------
@@ -47,10 +55,10 @@
 #   python -m batch.sweep batch/sweep_b_lgbm_control.yaml \
 #       --results-dir results_sweep_b 2>&1 | tee -a sweep_b_log.txt
 # Then:
-#   "/c/Program Files/R/R-4.5.1/bin/x64/Rscript.exe" analyze_sweep.R \
+#   & "C:/Program Files/R/R-4.5.1/bin/x64/Rscript.exe" analyze_sweep.R `
 #       results_sweep_b/metrics_table.csv figures/dashboard_sweep_b
-#   python -m evaluation.dashboard \
-#       --results-dir results_sweep_b \
+#   python -m evaluation.dashboard `
+#       --results-dir results_sweep_b `
 #       --out figures/dashboard_sweep_b
 #
 # The companion `sweep_b_lgbm_control.yaml` adds SHAP-LightGBM on the
@@ -84,10 +92,10 @@ datasets:
 - {tag: blobs_ninf_high_s1,    override: {random_state: 1, informative_fraction: 0.4}}
 - {tag: blobs_ninf_high_s2,    override: {random_state: 2, informative_fraction: 0.4}}
 - {tag: blobs_ninf_high_s3,    override: {random_state: 3, informative_fraction: 0.4}}
-# --- n_clusters high (3 seeds) ---
-- {tag: blobs_nclust_high_s1,  override: {random_state: 1, n_clusters: 8}}
-- {tag: blobs_nclust_high_s2,  override: {random_state: 2, n_clusters: 8}}
-- {tag: blobs_nclust_high_s3,  override: {random_state: 3, n_clusters: 8}}
+# --- n_clusters low (3 seeds) ---
+- {tag: blobs_nclust_low_s1,   override: {random_state: 1, n_clusters: 4}}
+- {tag: blobs_nclust_low_s2,   override: {random_state: 2, n_clusters: 4}}
+- {tag: blobs_nclust_low_s3,   override: {random_state: 3, n_clusters: 4}}
 # --- cluster_std low (5 seeds, high seed variance) ---
 - {tag: blobs_std_low_s1,      override: {random_state: 1, cluster_std: 0.7}}
 - {tag: blobs_std_low_s2,      override: {random_state: 2, cluster_std: 0.7}}
@@ -108,6 +116,10 @@ datasets:
 - {tag: blobs_overlap_high_s1, override: {random_state: 1, center_box: [-1.0, 1.0]}}
 - {tag: blobs_overlap_high_s2, override: {random_state: 2, center_box: [-1.0, 1.0]}}
 - {tag: blobs_overlap_high_s3, override: {random_state: 3, center_box: [-1.0, 1.0]}}
+# --- overlap_low (3 seeds, wide centroids, well-separated clusters) ---
+- {tag: blobs_overlap_low_s1,  override: {random_state: 1, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s2,  override: {random_state: 2, center_box: [-4.0, 4.0]}}
+- {tag: blobs_overlap_low_s3,  override: {random_state: 3, center_box: [-4.0, 4.0]}}
 
 models:
 - tag: mlp
