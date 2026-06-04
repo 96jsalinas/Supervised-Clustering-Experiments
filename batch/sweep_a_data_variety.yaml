@@ -102,7 +102,7 @@ datasets:
 - {tag: blobs_nclust_high_s3,  override: {random_state: 3, n_clusters: 8}}
 - {tag: blobs_nclust_high_s4,  override: {random_state: 4, n_clusters: 8}}
 - {tag: blobs_nclust_high_s5,  override: {random_state: 5, n_clusters: 8}}
-# --- cluster_std low (0.7) -- high seed variance, 8 seeds ---
+# --- cluster_std low (0.7) -- high seed variance, 12 seeds ---
 - {tag: blobs_std_low_s1,      override: {random_state: 1, cluster_std: 0.7}}
 - {tag: blobs_std_low_s2,      override: {random_state: 2, cluster_std: 0.7}}
 - {tag: blobs_std_low_s3,      override: {random_state: 3, cluster_std: 0.7}}
