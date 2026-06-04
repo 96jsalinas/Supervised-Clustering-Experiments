@@ -44,9 +44,9 @@
 #
 # Wall-time estimate
 # ------------------
-# MLP attribution dominates: ~70 s per run x 224 runs ~ 4.4 h pipeline.
+# MLP attribution dominates: ~70 s per run x 248 runs ~ 4.8 h pipeline.
 # Tuning (16-combo grid x 5-fold CV x ~3 s per fold) ~ 4 min per cell
-# x 28 cells ~ 1.9 h.
+# x 31 cells ~ 2.1 h.
 # Estimated total: ~6.3 h. Within the ~8 h overnight budget.
 #
 # Launch overnight with (this file first, then the LGBM control):
@@ -62,7 +62,7 @@
 #       --out figures/dashboard_sweep_b
 #
 # The companion `sweep_b_lgbm_control.yaml` adds SHAP-LightGBM on the
-# same 28 cells (~7 min extra) so the SHAP-vs-LRP comparison has a
+# same 31 cells (~8 min extra) so the SHAP-vs-LRP comparison has a
 # matched-data control. Both write to results_sweep_b/ and the R
 # script picks them up together.
 #

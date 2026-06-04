@@ -1,11 +1,11 @@
-# Sweep B companion — LightGBM-SHAP control on the same 28 cells.
+# Sweep B companion — LightGBM-SHAP control on the same 31 cells.
 #
 # Why a separate file: the sweep schema does not support per-model
 # attribution lists, so combining LightGBM (SHAP-only) with MLP
 # (SHAP + LRP) in one config would attempt LRP on LightGBM and
 # crash. Keeping it separate is also cleaner for the launch log.
 #
-# This file mirrors `sweep_b_lrp_vs_shap.yaml`'s 28 dataset cells
+# This file mirrors `sweep_b_lrp_vs_shap.yaml`'s 31 dataset cells
 # exactly. Both configs write to the same `--results-dir` so the R
 # analysis script picks up everything in one pass.
 #
@@ -16,7 +16,7 @@
 # "for the same dataset, attribution X recovers structure better
 # than attribution Y on model Z".
 #
-# Cost: ~28 cells * ~15s (LightGBM cell) = ~7 minutes.
+# Cost: ~31 cells * ~15s (LightGBM cell) = ~8 minutes.
 #
 # Grid structure
 # --------------
