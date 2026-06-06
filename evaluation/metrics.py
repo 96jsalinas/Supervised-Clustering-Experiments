@@ -48,7 +48,18 @@ def _pair_counting_f(y_true: np.ndarray, labels: np.ndarray) -> float:
 
 
 def _compute_external(y_true: np.ndarray, labels: np.ndarray) -> dict:
-    """Compute external metrics (require ground truth)."""
+    """Compute external metrics (require ground truth).
+
+    On real data there are no ground-truth subcluster labels (y_true is None),
+    so the recovery metrics are undefined and returned as NaN.
+    """
+    if y_true is None:
+        return {
+            "ari": np.nan,
+            "nmi": np.nan,
+            "ami": np.nan,
+            "f_measure": np.nan,
+        }
     return {
         "ari": adjusted_rand_score(y_true, labels),
         "nmi": normalized_mutual_info_score(y_true, labels),
@@ -109,14 +120,20 @@ def compute_all_metrics(result: RunResult) -> pd.DataFrame:
 
     cmeta = result.clustering_meta if result.clustering_meta else {}
 
+    # Subcluster ground truth and the full-attribution matrix are restricted to
+    # the clustered rows so they align with the (possibly subset) cluster labels.
+    # When the whole sample is clustered these are the full arrays unchanged.
+    y_sub_clustered = result.subset_y_subcluster()
+    attr_clustered = result.clustered_attributions()
+
     rows = []
     for space, labels, X_space, t_clust, meta_key in [
         ("embedding_2d", result.cluster_labels_2d, result.embedding_2d,
          t.get("clustering_2d"), "2d"),
-        ("full_attribution", result.cluster_labels_full, result.attributions,
+        ("full_attribution", result.cluster_labels_full, attr_clustered,
          t.get("clustering_full"), "full"),
     ]:
-        external = _compute_external(result.y_subcluster, labels)
+        external = _compute_external(y_sub_clustered, labels)
         internal = _compute_internal(X_space, labels)
         selected_k = cmeta.get(f"selected_k_{meta_key}")
         rows.append({

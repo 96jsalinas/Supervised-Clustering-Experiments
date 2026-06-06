@@ -1,0 +1,55 @@
+# Real-data validation: UCI 529 Early Stage Diabetes (Islam et al., 2020).
+# Methodological-consistency comparison to diabetes_positives.yaml: same pipeline,
+# but reduce and cluster the whole sample (n=520, both classes), matching the
+# convention used by the synthetic sweeps and Cooper's blogpost worked example.
+# Clusters here encode both the positive-vs-negative split and any sub-structure.
+#
+# External metrics are NaN (no ground-truth subclusters); silhouette is primary.
+# n_neighbors / min_cluster_size scaled to n=520; tune after the first run.
+
+data:
+  source: real
+  dataset: uci529_early_diabetes
+
+clustering_subset: all
+
+model:
+  method: lightgbm
+  random_state: 42
+  params: {}
+  tune:
+    enabled: true
+    cv: {n_splits: 10, shuffle: true, random_state: 42}
+    scoring: accuracy
+    grid:
+      num_leaves: [15, 31, 63]
+      learning_rate: [0.05, 0.1]
+      n_estimators: [50, 100, 200]
+
+attribution:
+  method: shap
+  target_class: 1
+
+reduction:
+  method: umap
+  random_state: 42
+  params:
+    n_components: 2
+    n_neighbors: 50
+    min_dist: 0.0
+
+clustering:
+  method: hdbscan
+  # Cooper-style grid search: maximise mean silhouette subject to <=3% noise.
+  # Ranges scaled to the full n=520 sample.
+  auto_select:
+    enabled: true
+    min_cluster_size: [15, 20, 25, 30, 40]
+    min_samples: [5, 10, 15]
+    cluster_selection_epsilon: [0.0, 0.25, 0.5]
+    max_noise_fraction: 0.03
+
+evaluation:
+  internal: [silhouette]
+  cv_report: {enabled: true, n_splits: 10, random_state: 42}
+  raw_baseline: {enabled: true}

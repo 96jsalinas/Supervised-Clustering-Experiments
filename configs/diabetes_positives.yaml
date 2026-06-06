@@ -1,0 +1,63 @@
+# Real-data validation: UCI 529 Early Stage Diabetes (Islam et al., 2020).
+# Cooper applied formulation: train + attribute on all 520 patients, then reduce
+# and cluster the diabetes-positive subgroup only (n=320) to characterise
+# subphenotypes. LightGBM is the headline model (the paper found a tree ensemble
+# best, and it avoids MLP overfitting at this n).
+#
+# No ground-truth subclusters exist, so external metrics (ARI/NMI/AMI/F-measure)
+# are reported as NaN and silhouette is the primary metric for this first pass.
+#
+# n_neighbors / min_cluster_size are starting points scaled to n=320; tune after
+# inspecting the first run.
+
+data:
+  source: real
+  dataset: uci529_early_diabetes
+
+clustering_subset: positives
+
+model:
+  method: lightgbm
+  random_state: 42
+  params: {}
+  # Classifier tuned by stratified 10-fold CV (Cooper selects XGBoost hyper-
+  # parameters by 10-fold CV). Same grid as the synthetic LightGBM sweeps.
+  tune:
+    enabled: true
+    cv: {n_splits: 10, shuffle: true, random_state: 42}
+    scoring: accuracy
+    grid:
+      num_leaves: [15, 31, 63]
+      learning_rate: [0.05, 0.1]
+      n_estimators: [50, 100, 200]
+
+attribution:
+  method: shap
+  target_class: 1
+
+reduction:
+  method: umap
+  random_state: 42
+  params:
+    n_components: 2
+    n_neighbors: 30
+    min_dist: 0.0
+
+clustering:
+  method: hdbscan
+  # Cooper-style grid search: maximise mean silhouette subject to <=3% noise.
+  # Ranges scaled to the n=320 positive subgroup.
+  auto_select:
+    enabled: true
+    min_cluster_size: [10, 15, 20, 25, 30]
+    min_samples: [5, 10, 15]
+    cluster_selection_epsilon: [0.0, 0.25, 0.5]
+    max_noise_fraction: 0.03
+
+evaluation:
+  internal: [silhouette]
+  # Headline classifier number: 10-fold CV over the full 520, comparable to
+  # Islam et al. (97.4% RF) and Cooper et al. (CV accuracy / AUCROC).
+  cv_report: {enabled: true, n_splits: 10, random_state: 42}
+  # Cooper's validation: same UMAP+HDBSCAN on raw features (no SHAP) for contrast.
+  raw_baseline: {enabled: true}

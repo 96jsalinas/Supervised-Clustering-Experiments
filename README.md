@@ -37,7 +37,8 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 │   ├── reduction/              # UMAP, PCA, t-SNE, PaCMAP
 │   └── clustering/             # DBSCAN, HDBSCAN, k-means
 ├── data/
-│   └── synthetic.py            # Data generation via sklearn.make_blobs
+│   ├── synthetic.py            # Data generation via sklearn.make_blobs
+│   └── real.py                 # Loader for documented real datasets (UCI 529)
 ├── evaluation/
 │   ├── metrics.py              # External (ARI, NMI, AMI) and internal metrics + timings
 │   ├── figures.py              # Per-run scatter / importance / per-cluster profile plots
@@ -95,6 +96,19 @@ The `rotate_informative: true` flag in a `data:` block applies one extra step af
 **What changes:** cluster principal axes are no longer parallel to the feature axes, so splits along a single coordinate (the move tree ensembles rely on) no longer align with the informative structure. The MLP, which processes feature vectors through a learned linear layer, is basis-invariant and should be unaffected — any gap that persists or closes between models under rotation is evidence about axis-alignment, not about model capacity.
 
 This is **not** an attempt to reimplement `sklearn.make_classification`. Centroid placement, feature correlations, redundant features, and label noise are all left exactly as the default `make_blobs` path produces them. Only the basis of the informative subspace is randomised.
+
+## Real datasets
+
+A `data:` block with `source: real` loads a documented external dataset via `data/real.py` instead of generating synthetic data. Currently `dataset: uci529_early_diabetes` is supported (UCI ML Repository id 529, *Early Stage Diabetes Risk Prediction*, Islam et al. 2020), fetched with `ucimlrepo` and cached to `datasets/`. The loader z-score standardises numeric columns, maps the binary categoricals to 0/1, and returns no ground-truth subcluster labels.
+
+Because real data has no ground-truth subgroups, the external recovery metrics (ARI, NMI, AMI, F-measure) are reported as `NaN` and the internal metrics (silhouette and the others) are primary. Example configs: `configs/diabetes_positives.yaml` and `configs/diabetes_all.yaml`.
+
+### `clustering_subset`: where to cluster
+
+A top-level `clustering_subset` key controls which rows reach dimensionality reduction and clustering, while the model and attribution stages always use the full sample:
+
+- `all` (default) — reduce and cluster every sample, the convention used by the synthetic sweeps and Cooper's blogpost worked example.
+- `positives` — reduce and cluster only the positive class (`y_class == 1`), replicating the applied formulation of Cooper et al. (2021), which trains and attributes on all participants but characterises subgroups within the positive cohort only.
 
 ## Current status
 

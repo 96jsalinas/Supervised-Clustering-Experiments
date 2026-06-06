@@ -39,8 +39,23 @@ def main(config_path: str):
     print(f"Running experiment: {run_name}")
     print(f"Output directory:   {output_dir}")
 
-    print("Generating data...")
-    X, y_class, y_subcluster = generate_data(config["data"])
+    data_cfg = config["data"]
+    source = data_cfg.get("source", "synthetic")
+    feature_names = None
+    if source == "real":
+        from data.real import load_real
+        print("Loading real dataset...")
+        X, y_class, y_subcluster, feature_names, meta = load_real(data_cfg)
+        print(f"  Dataset: {meta['dataset']} "
+              f"(n={meta['n_total']}, positives={meta['n_positive']}, "
+              f"n_features={X.shape[1]})")
+    elif source == "synthetic":
+        print("Generating data...")
+        X, y_class, y_subcluster = generate_data(data_cfg)
+    else:
+        raise ValueError(
+            f"data.source must be 'synthetic' or 'real', got '{source}'."
+        )
 
     print("Running pipeline...")
     runner = PipelineRunner(config)
@@ -48,6 +63,37 @@ def main(config_path: str):
 
     print("Computing metrics...")
     metrics_df = compute_all_metrics(result)
+
+    # Cooper/Islam-style CV performance over the full dataset, reported as the
+    # headline classifier number (comparable to the published baselines). Uses
+    # the tuned params when a tuning pass ran. Gated by config so synthetic runs
+    # do not pay for it.
+    cv_cfg = (config.get("evaluation") or {}).get("cv_report") or {}
+    if cv_cfg.get("enabled", False):
+        from copy import deepcopy
+        from pipeline.registry import MODELS
+        from evaluation.classifier import cross_val_report
+        model_cfg = deepcopy(config["model"])
+        if result.tuning_selected is not None:
+            model_cfg.setdefault("params", {}).update(
+                result.tuning_selected["params"]
+            )
+        print("Computing cross-validated classifier performance...")
+        cv_report = cross_val_report(
+            MODELS[model_cfg["method"]],
+            model_cfg,
+            X,
+            y_class,
+            n_splits=int(cv_cfg.get("n_splits", 10)),
+            random_state=int(cv_cfg.get("random_state", 42)),
+        )
+        for k, v in cv_report.items():
+            metrics_df[k] = v
+        acc = cv_report["cv_accuracy_mean"]
+        auc = cv_report.get("cv_auc_mean")
+        auc_str = f", AUC={auc:.4f}" if auc is not None else ""
+        print(f"  {cv_report['cv_n_splits']}-fold CV: "
+              f"accuracy={acc:.4f}{auc_str}")
 
     if result.tuning_selected is not None:
         sel = result.tuning_selected
@@ -72,19 +118,58 @@ def main(config_path: str):
     metrics_df.to_csv(output_dir / "metrics.csv", index=False)
     print(metrics_df.to_string(index=False))
 
+    # Persist HDBSCAN grid-search artefacts when auto_select ran, so the
+    # silhouette curve and the chosen parameters are recoverable.
+    cmeta = result.clustering_meta or {}
+    for tag in ("2d", "full"):
+        elbow_df = cmeta.get(f"elbow_df_{tag}")
+        if elbow_df is not None:
+            elbow_df.to_csv(output_dir / f"hdbscan_grid_{tag}.csv", index=False)
+        sel_params = cmeta.get(f"selected_params_{tag}")
+        if sel_params is not None:
+            print(f"  HDBSCAN selected ({tag}): {sel_params} "
+                  f"-> k={cmeta.get(f'selected_k_{tag}')}")
+
     print("Saving arrays...")
     import numpy as np
-    np.savez(
-        output_dir / "arrays.npz",
+    # y_subcluster is None on real data; only persist it when present so the
+    # archive stays a clean numeric array rather than a 0-d object array.
+    array_kwargs = dict(
         embedding_2d=result.embedding_2d,
         cluster_labels_2d=result.cluster_labels_2d,
         cluster_labels_full=result.cluster_labels_full,
-        y_subcluster=result.y_subcluster,
         y_class=result.y_class,
+        subset_mask=result._mask(),
     )
+    if result.y_subcluster is not None:
+        array_kwargs["y_subcluster"] = result.y_subcluster
+    np.savez(output_dir / "arrays.npz", **array_kwargs)
 
     print("Saving figures...")
-    save_all_figures(result, figures_dir)
+    save_all_figures(result, figures_dir, config=config,
+                     feature_names=feature_names)
+
+    # Cooper's validation arm: cluster the raw features (no SHAP) with the same
+    # reduction + clustering and contrast the silhouette. Gated by config.
+    raw_cfg = (config.get("evaluation") or {}).get("raw_baseline") or {}
+    if raw_cfg.get("enabled", False):
+        from evaluation.raw_baseline import compute_raw_baseline
+        from evaluation.figures import save_shap_vs_raw
+        from evaluation.metrics import _compute_internal
+        print("Computing raw-feature baseline (no SHAP)...")
+        X_sub_raw = X[result._mask()]
+        raw = compute_raw_baseline(X_sub_raw, config)
+        sil_shap = _compute_internal(
+            result.embedding_2d, result.cluster_labels_2d
+        )["silhouette"]
+        metrics_df["raw_silhouette"] = raw["silhouette"]
+        metrics_df["raw_n_clusters"] = raw["n_clusters"]
+        metrics_df["raw_n_noise"] = raw["n_noise"]
+        metrics_df.to_csv(output_dir / "metrics.csv", index=False)
+        save_shap_vs_raw(result, raw, sil_shap, figures_dir)
+        print(f"  SHAP silhouette={sil_shap:.4f} vs "
+              f"raw silhouette={raw['silhouette']:.4f} "
+              f"(raw k={raw['n_clusters']}, noise={raw['n_noise']})")
 
     print(f"Done. Results saved to {output_dir}")
 

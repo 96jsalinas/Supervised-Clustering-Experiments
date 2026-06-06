@@ -13,11 +13,17 @@ class RunResult:
 
     X_raw: np.ndarray
     y_class: np.ndarray          # binary class labels (0/1)
-    y_subcluster: np.ndarray     # true subcluster identities (0..n_classes*n_clusters-1)
-    attributions: np.ndarray
-    embedding_2d: np.ndarray
-    cluster_labels_2d: np.ndarray
-    cluster_labels_full: np.ndarray
+    y_subcluster: np.ndarray     # true subcluster identities, or None on real data
+    attributions: np.ndarray     # full (n_samples, n_features); computed on all rows
+    embedding_2d: np.ndarray     # (n_clustered, 2); n_clustered == subset_mask.sum()
+    cluster_labels_2d: np.ndarray      # (n_clustered,)
+    cluster_labels_full: np.ndarray    # (n_clustered,)
+    # Boolean mask over the full sample marking the rows fed to reduction and
+    # clustering. All-True when clustering the whole sample (synthetic default);
+    # the positive class only when replicating Cooper's applied formulation.
+    # attributions/y_class/y_subcluster stay full length; embedding and cluster
+    # labels are subset length. Use the subset_* helpers to align them.
+    subset_mask: np.ndarray = None
     timings: dict = field(default_factory=dict)  # wall-clock seconds per step
     # Classifier-level evaluation: computed on a stratified held-out test split.
     # Attribution/reduction/clustering still run on the full X so existing
@@ -33,6 +39,29 @@ class RunResult:
     # Clustering artefacts — populated when the clusterer exposes extra state
     # after fit_predict (e.g. kneedle selected_k_ and elbow_df_).
     clustering_meta: dict = field(default_factory=dict)
+
+    def _mask(self) -> np.ndarray:
+        """Boolean mask of clustered rows; all-True when no subset was applied."""
+        if self.subset_mask is None:
+            return np.ones(len(self.X_raw), dtype=bool)
+        return self.subset_mask
+
+    def clustered_attributions(self) -> np.ndarray:
+        """Attribution rows that were fed to reduction/clustering.
+
+        Aligns with embedding_2d, cluster_labels_2d and cluster_labels_full.
+        """
+        return self.attributions[self._mask()]
+
+    def subset_y_class(self) -> np.ndarray:
+        """y_class restricted to the clustered rows (aligns with embedding_2d)."""
+        return self.y_class[self._mask()]
+
+    def subset_y_subcluster(self):
+        """y_subcluster restricted to the clustered rows, or None on real data."""
+        if self.y_subcluster is None:
+            return None
+        return self.y_subcluster[self._mask()]
 
 
 class PipelineRunner:
@@ -136,9 +165,34 @@ class PipelineRunner:
         attributions = self.attributor.fit_transform(X, y_class, self.model)
         timings["attribution"] = perf_counter() - t0
 
+        # Cooper's applied formulation trains and attributes on all samples, then
+        # reduces and clusters only the positive class. clustering_subset selects
+        # between that ("positives") and clustering the whole sample ("all", the
+        # synthetic default). Model fit and attribution above always use full X.
+        subset_mode = self.config.get("clustering_subset", "all")
+        if subset_mode == "positives":
+            subset_mask = y_class == 1
+        elif subset_mode == "all":
+            subset_mask = np.ones(n, dtype=bool)
+        else:
+            raise ValueError(
+                f"clustering_subset must be 'positives' or 'all', "
+                f"got '{subset_mode}'."
+            )
+        n_clustered = int(subset_mask.sum())
+        if n_clustered < 3:
+            raise ValueError(
+                f"clustering_subset='{subset_mode}' leaves only {n_clustered} "
+                f"rows to cluster; need at least 3."
+            )
+        attr_clustered = attributions[subset_mask]
+        if subset_mode != "all":
+            print(f"  Clustering subset: '{subset_mode}' "
+                  f"(n_clustered={n_clustered} of {n})")
+
         print("  Reducing dimensions...")
         t0 = perf_counter()
-        embedding_2d = self.reducer.fit_transform(attributions)
+        embedding_2d = self.reducer.fit_transform(attr_clustered)
         timings["reduction"] = perf_counter() - t0
 
         clustering_meta: dict = {}
@@ -148,13 +202,15 @@ class PipelineRunner:
         cluster_labels_2d = self.clusterer.fit_predict(embedding_2d)
         timings["clustering_2d"] = perf_counter() - t0
         clustering_meta["selected_k_2d"] = getattr(self.clusterer, "selected_k_", None)
+        clustering_meta["selected_params_2d"] = getattr(self.clusterer, "selected_params_", None)
         clustering_meta["elbow_df_2d"] = getattr(self.clusterer, "elbow_df_", None)
 
         print("  Clustering in full attribution space (no DR)...")
         t0 = perf_counter()
-        cluster_labels_full = self.clusterer.fit_predict(attributions)
+        cluster_labels_full = self.clusterer.fit_predict(attr_clustered)
         timings["clustering_full"] = perf_counter() - t0
         clustering_meta["selected_k_full"] = getattr(self.clusterer, "selected_k_", None)
+        clustering_meta["selected_params_full"] = getattr(self.clusterer, "selected_params_", None)
         clustering_meta["elbow_df_full"] = getattr(self.clusterer, "elbow_df_", None)
 
         return RunResult(
@@ -165,6 +221,7 @@ class PipelineRunner:
             embedding_2d=embedding_2d,
             cluster_labels_2d=cluster_labels_2d,
             cluster_labels_full=cluster_labels_full,
+            subset_mask=subset_mask,
             timings=timings,
             train_idx=train_idx,
             test_idx=test_idx,

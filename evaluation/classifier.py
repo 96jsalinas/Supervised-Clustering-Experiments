@@ -53,6 +53,52 @@ def compute_classifier_metrics(y_true: np.ndarray, proba: np.ndarray) -> dict:
     }
 
 
+def cross_val_report(
+    model_cls,
+    model_cfg: dict,
+    X: np.ndarray,
+    y: np.ndarray,
+    n_splits: int = 10,
+    random_state: int = 42,
+) -> dict:
+    """Stratified k-fold CV accuracy and AUC over the full dataset.
+
+    Reports the classifier's performance the way the published baselines do
+    (Islam et al. 2020 and Cooper et al. 2021 both use 10-fold CV), so the
+    number is directly comparable rather than a single-split point estimate.
+    The model is re-instantiated per fold from `model_cfg` (which should already
+    carry any tuned params). Binary AUC uses the positive-class probability.
+
+    Returns a dict of cv_* scalars suitable for merging into a metrics row.
+    """
+    from sklearn.model_selection import StratifiedKFold
+
+    skf = StratifiedKFold(
+        n_splits=n_splits, shuffle=True, random_state=random_state
+    )
+    accs, aucs = [], []
+    for tr, va in skf.split(X, y):
+        model = model_cls(model_cfg)
+        model.fit(X[tr], y[tr])
+        proba = model.predict_proba(X[va])
+        accs.append(accuracy_score(y[va], proba.argmax(axis=1)))
+        if proba.shape[1] == 2:
+            try:
+                aucs.append(roc_auc_score(y[va], proba[:, 1]))
+            except ValueError:
+                pass
+
+    report = {
+        "cv_n_splits": n_splits,
+        "cv_accuracy_mean": float(np.mean(accs)),
+        "cv_accuracy_std": float(np.std(accs)),
+    }
+    if aucs:
+        report["cv_auc_mean"] = float(np.mean(aucs))
+        report["cv_auc_std"] = float(np.std(aucs))
+    return report
+
+
 def fit_and_eval_classifier(
     model,
     X_train: np.ndarray,
