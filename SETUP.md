@@ -3,35 +3,26 @@
 ## Requirements
 
 - Python 3.10+
-- The packages listed in the install command below (no `requirements.txt` yet, as the dependency set is small and stable)
+- The pinned dependency set in [`requirements.txt`](requirements.txt)
 
 ## Installation
 
 From the repository root:
 
 ```bash
-pip install lightgbm shap umap-learn hdbscan scikit-learn pandas matplotlib seaborn pyyaml torch zennit lime pacmap
+python -m pip install -r requirements.txt
 ```
 
-`torch` and `zennit` are required for the MLP baseline and LRP attributor; `lime` and `pacmap` for the corresponding methods.
+`requirements.txt` holds exact pins for every direct dependency plus the numerical
+stack (numpy / numba / scipy / joblib). `torch` and `zennit` are required for the
+MLP baseline and LRP attributor; `lime` and `pacmap` for the corresponding methods.
 
-Tested with the following versions (other recent versions should also work):
-
-| Package       | Version |
-|---------------|---------|
-| lightgbm      | 4.6.0   |
-| shap          | 0.51.0  |
-| umap-learn    | 0.5.12  |
-| hdbscan       | 0.8.42  |
-| scikit-learn  | 1.6.1   |
-| pandas        | 2.2.3   |
-| matplotlib    | 3.10.0  |
-| seaborn       | 0.13.2  |
-| PyYAML        | 6.0.2   |
-| torch         | 2.x     |
-| zennit        | 0.5.x   |
-| lime          | 0.2.x   |
-| pacmap        | 0.7.x   |
+**Critical constraint:** numba requires `numpy < 2.2`, and UMAP and SHAP both run
+on numba. Do not let an install pull numpy forward (for example, `pip install
+imodels` upgrades numpy to 2.4 and breaks umap/shap). When adding a package, check
+it does not move numpy or scikit-learn, or install it in a separate environment.
+The pins exist because small drift in the numerical stack can perceptibly change
+UMAP embeddings and therefore downstream clustering.
 
 ## Running an experiment
 
