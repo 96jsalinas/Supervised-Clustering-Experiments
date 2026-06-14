@@ -31,7 +31,7 @@ Outstanding work for the experimental framework. Items are grouped by category.
 ## Infrastructure
 
 - [x] **Batch runner** (`batch/sweep.py`) -- Cartesian-product sweep with `--dry-run`, per-run result folders, shallow method-override merge, optional `datasets:` axis, optional `models:` axis, per-(dataset × model) classifier tuning hoisted out of the combo loop.
-- [ ] **`requirements.txt`** -- generate from the current working environment once the dependency set stabilizes.
+- [x] **`requirements.txt`** -- pinned dependency set generated from the working environment (see `requirements.txt` and `SETUP.md`).
 - [ ] **Logging** -- replace `print()` statements with Python `logging` for configurable verbosity.
 
 ## Experiment design
@@ -40,7 +40,7 @@ Outstanding work for the experimental framework. Items are grouped by category.
 - [x] **Stability analysis** -- 24-run robustness sweep across 3 seeds and 3 difficulty scenarios; stability figure + pivot heatmaps in the dashboard.
 - [x] **Second generator family (axis-alignment test)** -- `rotate_informative: true` applies a random orthogonal rotation to `make_blobs`'s informative subspace; preserves cluster identities and pairwise centroid distances exactly, breaks tree-friendly axis-alignment.
 - [x] **Full comparison sweep** -- `batch/full_comparison_grid.yaml` (42 dataset cells × 2 models × 4 method combos = 336 runs) executed overnight 2026-04-23/24. Outputs in `results_full_comparison/` and `figures/dashboard_full_comparison/`. Findings drove the design of the two follow-up sweeps below.
-- [ ] **Sweep A — data variety** -- `batch/sweep_a_data_variety.yaml` (74 dataset cells × 2 models × 4 method combos = 592 runs). Adds `n_features` and `center_box` (overlap) as data axes, drops the `rotated` family, concentrates seeds on the high-variance `std_*` cells. Estimated ~6.5-7h.
-- [ ] **Sweep B — LRP vs SHAP** -- `batch/sweep_b_lrp_vs_shap.yaml` + companion `batch/sweep_b_lgbm_control.yaml` (28 dataset cells, MLP with SHAP+LRP plus LightGBM-SHAP control on the same cells, 336 runs total). Estimated ~5h.
+- [x] **Sweep A — data variety** -- `batch/sweep_a_data_variety.yaml` (74 dataset cells × 2 models × 4 method combos = 592 runs). Adds `n_features` and `center_box` (overlap) as data axes, drops the `rotated` family, concentrates seeds on the high-variance `std_*` cells. Run; outputs in `results_sweep_a/`.
+- [x] **Sweep B — LRP vs SHAP** -- `batch/sweep_b_lrp_vs_shap.yaml` + companion `batch/sweep_b_lgbm_control.yaml` (31 dataset cells, MLP with SHAP+LRP plus LightGBM-SHAP control on the same cells, 372 runs total). Run; outputs in `results_sweep_b/`.
 - [x] **Per-dataset clustering params** -- replaced fixed `k=6` with kneedle elbow auto-selection (`auto_select: {enabled: true, k_min: 2, k_max: 15}`) in `pipeline/clustering/kmeans_clusterer.py`. `selected_k` written to `metrics.csv`; `elbow_curve_{2d,full}.csv` written per run.
-- [ ] **Real-world dataset** -- if time permits, apply the pipeline to a real dataset.
+- [x] **Real-world dataset** -- applied to UCI 529 Early Stage Diabetes (Islam et al. 2020). `configs/diabetes_positives.yaml` clusters the positive cohort (Cooper applied formulation) and `configs/diabetes_all.yaml` the full sample; outputs in `results/diabetes_positives/` and `results/diabetes_all/`.

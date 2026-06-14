@@ -1,17 +1,23 @@
 # Supervised Clustering Experiments
 
-Systematic evaluation of a three-step **supervised clustering** pipeline for subgroup discovery, as part of Josu Salinas's Master's Thesis (TFM) at UC3M.
+Systematic evaluation of a four-step **supervised clustering** pipeline for subgroup discovery, as part of Josu Salinas's Master's Thesis (TFM) at UC3M.
 
 The pipeline takes raw tabular data through four stages:
 
 1. **Model training** -- train a supervised classifier. The baseline is an MLP (PyTorch); LightGBM is available as an alternative.
 2. **Feature attribution** -- use the trained model to extract per-sample feature importances (e.g. SHAP, LRP). The model is shared across attribution methods so comparisons are fair.
 3. **Dimensionality reduction** -- project the attribution matrix to 2D (e.g. UMAP).
-4. **Clustering** -- identify subgroups in the reduced space (e.g. DBSCAN, HDBSCAN).
+4. **Clustering** -- identify subgroups in the reduced space (e.g. HDBSCAN, k-means with kneedle elbow selection, DBSCAN).
 
 The framework is config-driven: each experiment is defined by a YAML file specifying the method and hyperparameters for every step. Adding a new method requires one Python file and one line in the registry.
 
 Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP Values](https://www.aidancooper.co.uk/supervised-clustering-shap-values/).
+
+## License and status
+
+This code accompanies the Master's Thesis (TFM) of Josu Salinas at Universidad Carlos III de Madrid. The thesis has not yet been defended or published, so the repository is provisional and may change before the final version; it is shared in advance so the pipeline can be reused and extended. A citation will be added here once the thesis is published.
+
+The code in this repository is released under the [MIT License](LICENSE). It depends on third-party libraries that keep their own licenses; all are permissive (MIT, BSD, Apache-2.0, PSF) with one exception: the LRP backend [Zennit](https://github.com/chr5tphr/zennit) is LGPL-3.0. Zennit is used as an unmodified, separately installed dependency, which the LGPL permits from MIT-licensed code. If you redistribute a bundle that includes Zennit itself, comply with the LGPL for that copy.
 
 ## Repository structure
 
@@ -22,12 +28,17 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 │   ├── cooper_dbscan.yaml      # Cooper blogpost reproduction (sanity check, LightGBM)
 │   ├── hdbscan_baseline.yaml   # LightGBM+SHAP+UMAP+HDBSCAN reference
 │   ├── mlp_baseline.yaml       # Thesis baseline: MLP+SHAP+UMAP+HDBSCAN
-│   └── mlp_lrp.yaml            # MLP+LRP+UMAP+HDBSCAN
+│   ├── mlp_lrp.yaml            # MLP+LRP+UMAP+HDBSCAN
+│   ├── diabetes_positives.yaml # Real data: cluster the positive cohort (Cooper applied)
+│   └── diabetes_all.yaml       # Real data: cluster the full sample
 ├── batch/                      # Cartesian-product sweeps over pipeline methods
 │   ├── sweep.py                # Sweep runner (datasets x models x attr x red x clust)
+│   ├── sweep_a_data_variety.yaml   # Sweep A: data-variety, SHAP, MLP + LightGBM
+│   ├── sweep_b_lrp_vs_shap.yaml    # Sweep B: LRP vs SHAP on the MLP
+│   ├── sweep_b_lgbm_control.yaml   # Sweep B: LightGBM-SHAP control
 │   ├── full_grid.yaml          # Method-only grid (one model, one dataset)
-│   ├── robustness_grid.yaml    # Prior stability sweep (single model, seed + difficulty axes)
-│   └── full_comparison_grid.yaml  # Overnight grid: two models, two generator families
+│   ├── robustness_grid.yaml    # Earlier stability sweep
+│   └── full_comparison_grid.yaml   # Earlier overnight grid (pre-relaunch)
 ├── pipeline/                   # Modular pipeline components
 │   ├── base.py                 # Abstract base classes
 │   ├── registry.py             # Maps config method names to Python classes
@@ -40,7 +51,7 @@ Core methodology reference: Cooper, A. (2022). [Supervised Clustering with SHAP 
 │   ├── synthetic.py            # Data generation via sklearn.make_blobs
 │   └── real.py                 # Loader for documented real datasets (UCI 529)
 ├── evaluation/
-│   ├── metrics.py              # External (ARI, NMI, AMI) and internal metrics + timings
+│   ├── metrics.py              # External (ARI, NMI, AMI, F-measure) and internal metrics + timings
 │   ├── figures.py              # Per-run scatter / importance / per-cluster profile plots
 │   └── dashboard.py            # Cross-run dashboard (metrics table + embedding grid + metric bars)
 └── results/                    # Auto-created per run
@@ -80,7 +91,7 @@ This produces `metrics_table.csv` / `metrics_table.png`, `embedding_grid.png` (o
 
 ## Data generation
 
-The synthetic datasets (`data/synthetic.py`) are produced by `sklearn.make_blobs` in an `n_informative`-dimensional subspace and padded with independent Gaussian noise features to reach `n_features` total. Binary class labels are derived as `y_class = y_subcluster % n_classes`, so cluster 0 → class 0, cluster 1 → class 1, cluster 2 → class 0, etc. `center_box` controls the range in which cluster centres are placed; narrowing it increases raw-feature-space overlap so the pipeline gets a non-trivial subgroup-discovery problem rather than clusters that separate on any single axis.
+The synthetic datasets (`data/synthetic.py`) are produced by `sklearn.make_blobs` in an informative subspace and padded with independent Gaussian noise features to reach `n_features` total. The size of the informative subspace is set either by `n_informative` (an absolute count) or by `informative_fraction` (a fraction of `n_features`); the reported sweeps use `informative_fraction` so the signal-to-noise ratio stays fixed as `n_features` varies. Binary class labels are derived as `y_class = y_subcluster % n_classes`, so cluster 0 → class 0, cluster 1 → class 1, cluster 2 → class 0, etc. `center_box` controls the range in which cluster centres are placed; narrowing it increases raw-feature-space overlap so the pipeline gets a non-trivial subgroup-discovery problem rather than clusters that separate on any single axis.
 
 ### Optional orthogonal rotation of the informative subspace
 
@@ -112,4 +123,4 @@ A top-level `clustering_subset` key controls which rows reach dimensionality red
 
 ## Current status
 
-All pipeline methods (MLP, LightGBM, SHAP, LRP, LIME, UMAP, PCA, t-SNE, PaCMAP, DBSCAN, HDBSCAN, k-means) are implemented. Batch sweep accepts dataset and model axes; classifier-level metrics land in every run via a stratified train/test split; `model.tune` blocks can tune classifier hyperparameters per (dataset × model) cell via stratified K-fold CV. The cross-run dashboard produces model-aware pivot heatmaps, stability strips, and a colour-coded metrics table. See [TODO.md](TODO.md) for outstanding items.
+All pipeline methods (MLP, LightGBM, SHAP, LRP, LIME, UMAP, PCA, t-SNE, PaCMAP, DBSCAN, HDBSCAN, k-means) are implemented. Batch sweep accepts dataset and model axes; classifier-level metrics land in every run via a stratified train/test split; `model.tune` blocks can tune classifier hyperparameters per (dataset × model) cell via stratified K-fold CV. k-means selects its cluster count with the kneedle elbow, and the external metrics include the pair-counting F-measure alongside ARI, NMI, and AMI. Real tabular datasets are supported through a `source: real` data block together with the `clustering_subset` control. The cross-run dashboard produces model-aware pivot heatmaps, stability strips, and a colour-coded metrics table. See [TODO.md](TODO.md) for outstanding items.

@@ -41,6 +41,8 @@ The script resolves all paths relative to its own location, so it can be called 
 | `mlp_baseline.yaml`         | Thesis baseline: MLP + SHAP + UMAP + HDBSCAN  |
 | `mlp_lrp.yaml`              | MLP + LRP + UMAP + HDBSCAN                    |
 | `r_reference_example1.yaml` | High cluster-separation scenario (cf. R reference Example I) |
+| `diabetes_positives.yaml`   | Real data: UCI 529 diabetes, cluster the positive cohort |
+| `diabetes_all.yaml`         | Real data: UCI 529 diabetes, cluster the full sample |
 
 ## Batch sweeps
 
@@ -50,6 +52,12 @@ The script resolves all paths relative to its own location, so it can be called 
 python -m batch.sweep batch/full_grid.yaml --dry-run   # list combinations
 python -m batch.sweep batch/full_grid.yaml             # run them
 ```
+
+A grid spec may also declare optional `datasets:` and `models:` axes, so a single
+sweep can span a (dataset x model x attribution x reduction x clustering) product.
+The sweeps reported in the thesis are `batch/sweep_a_data_variety.yaml` (data
+variety) and `batch/sweep_b_lrp_vs_shap.yaml` with `batch/sweep_b_lgbm_control.yaml`
+(LRP vs SHAP plus the LightGBM-SHAP control).
 
 ## Cross-run dashboard
 
@@ -83,12 +91,12 @@ Note that `model` and `attribution` are separate config sections. The model is t
 Each run produces:
 
 - `config.yaml` -- exact copy of the config used, for reproducibility.
-- `metrics.csv` -- external (ARI, NMI, AMI vs true subclusters) and internal (Silhouette, Davies-Bouldin, Calinski-Harabasz) metrics, plus per-step wall-clock time. Two rows: clustering in the 2D embedding and in the full attribution space (no DR).
+- `metrics.csv` -- external (ARI, NMI, AMI, F-measure vs true subclusters; `NaN` on real data with no ground truth) and internal (Silhouette, Davies-Bouldin, Calinski-Harabasz) metrics, plus per-step wall-clock time. Two rows: clustering in the 2D embedding and in the full attribution space (no DR).
 - `arrays.npz` -- the 2D embedding and cluster labels, consumed by `evaluation/dashboard.py`.
 - `figures/` -- PNG plots ready for LaTeX inclusion:
   - `umap_raw_true_labels.png` -- 2D projection of raw features colored by class.
   - `umap_shap_true_labels.png` -- 2D projection of attributions colored by class.
-  - `umap_shap_subcluster_labels.png` -- same projection colored by the 6 true subclusters.
+  - `umap_shap_subcluster_labels.png` -- same projection colored by the true subclusters.
   - `umap_shap_cluster_labels.png` -- same projection colored by predicted cluster.
   - `clusters_no_dr_vs_dr.png` -- side-by-side: clusters found in the full attribution space vs in the 2D embedding.
   - `shap_importance_bar.png` -- mean absolute attribution per feature.
