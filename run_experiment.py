@@ -42,6 +42,7 @@ def main(config_path: str):
     data_cfg = config["data"]
     source = data_cfg.get("source", "synthetic")
     feature_names = None
+    meta = None
     if source == "real":
         from data.real import load_real
         print("Loading real dataset...")
@@ -170,6 +171,33 @@ def main(config_path: str):
         print(f"  SHAP silhouette={sil_shap:.4f} vs "
               f"raw silhouette={raw['silhouette']:.4f} "
               f"(raw k={raw['n_clusters']}, noise={raw['n_noise']})")
+
+    # Qualitative cluster description: per-cluster symptom prevalence plus a
+    # shallow multiclass decision tree (figure + rules), in original units.
+    # Needs the loader's inverse-transform metadata, so it is real-data only.
+    desc_cfg = (config.get("evaluation") or {}).get("cluster_description") or {}
+    if desc_cfg.get("enabled", False):
+        if meta is None or feature_names is None:
+            print("  Skipping cluster description: needs real-data metadata.")
+        else:
+            from evaluation.cluster_description import describe_clusters
+            # tree_max_depth: max comparison terms per rule (Cooper uses 2).
+            md = int(desc_cfg.get("tree_max_depth", 2))
+            print("Describing clusters (prevalence + one-vs-all rules)...")
+            desc = describe_clusters(
+                result, feature_names, meta, output_dir, figures_dir,
+                max_depth=md,
+            )
+            agr = desc["agreement"]
+            print(f"  2D labeling: {agr['n_clusters_2d']} clusters; "
+                  f"full-space: {agr['n_clusters_full']} clusters; "
+                  f"ARI(2D,full)={agr['ari_2d_vs_full']:.3f}")
+            if (agr["ari_2d_vs_full"] < 0.5
+                    or agr["n_clusters_2d"] != agr["n_clusters_full"]):
+                print("  NOTE: 2D and full-space clusterings diverge "
+                      "noticeably; full-space tables saved alongside for review.")
+            n_rules = len(desc["rules"]["2d"])
+            print(f"  Wrote prevalence tables and {n_rules} 2D tree rules.")
 
     print(f"Done. Results saved to {output_dir}")
 

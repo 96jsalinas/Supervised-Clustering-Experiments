@@ -61,3 +61,8 @@ evaluation:
   cv_report: {enabled: true, n_splits: 10, random_state: 42}
   # Cooper's validation: same UMAP+HDBSCAN on raw features (no SHAP) for contrast.
   raw_baseline: {enabled: true}
+  # Qualitative subgroup description: symptom prevalence + shallow tree
+  # rules per cluster, replacing the package-blocked SkopeRules step.
+  # One-vs-all decision rules per cluster (Cooper's SkopeRules step). tree_max_depth
+  # is the max comparison terms per rule; Cooper's applied 2021 paper uses 4.
+  cluster_description: {enabled: true, tree_max_depth: 4}

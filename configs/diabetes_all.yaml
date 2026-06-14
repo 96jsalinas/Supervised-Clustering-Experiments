@@ -53,3 +53,6 @@ evaluation:
   internal: [silhouette]
   cv_report: {enabled: true, n_splits: 10, random_state: 42}
   raw_baseline: {enabled: true}
+  # One-vs-all decision rules per cluster (Cooper's SkopeRules step); depth 4 = max
+  # four comparison terms per rule, as in Cooper's applied 2021 paper.
+  cluster_description: {enabled: true, tree_max_depth: 4}

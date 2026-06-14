@@ -43,17 +43,33 @@ _GENDER = {"male": 1, "female": 0}
 _POSNEG = {"positive": 1, "negative": 0}
 
 
-def _encode_categorical(series: pd.Series) -> np.ndarray:
+# Human-readable labels for the encoded levels, keyed by the same mapping
+# object used to encode. Carried through to cluster descriptions so a decision
+# rule reads "polyuria=Yes" rather than "polyuria=1" and gender is not mislabelled
+# as a Yes/No flag.
+_LABELS = {
+    id(_YESNO): {0: "No", 1: "Yes"},
+    id(_GENDER): {0: "Female", 1: "Male"},
+    id(_POSNEG): {0: "Negative", 1: "Positive"},
+}
+
+
+def _encode_categorical(series: pd.Series) -> tuple[np.ndarray, dict]:
     """Map a categorical column to 0/1, raising on any unmapped value.
 
     Picks the mapping by inspecting the column's value set rather than its name,
     so the loader does not hard-code which column is gender vs a Yes/No flag.
+
+    Returns the encoded array and the inverse label map ({0: ..., 1: ...}) for
+    the mapping that matched, so downstream code can render the original level
+    names.
     """
     vals = series.astype(str).str.strip().str.lower()
     unique = set(vals.unique())
     for mapping in (_YESNO, _GENDER, _POSNEG):
         if unique <= set(mapping):
-            return vals.map(mapping).to_numpy(dtype=int)
+            encoded = vals.map(mapping).to_numpy(dtype=int)
+            return encoded, _LABELS[id(mapping)]
     raise ValueError(
         f"Column '{series.name}': values {sorted(unique)} match none of the "
         f"known binary encodings (Yes/No, Male/Female, Positive/Negative)."
@@ -88,7 +104,12 @@ def load_real(
       y_class        : (n_samples,) int array, target encoded to 0/1.
       y_subcluster   : always None -- real data has no ground-truth subgroups.
       feature_names  : column names in the order they appear in X.
-      meta           : dict with 'positive_mask' (y_class == 1) and 'n_positive'.
+      meta           : dict with 'positive_mask' (y_class == 1), 'n_positive',
+                       and the inverse-transform metadata 'numeric_stats'
+                       (per-numeric-column mean/std) and 'value_labels'
+                       (per-categorical-column {0,1} -> level name), used by the
+                       cluster-description step to report ages in years and
+                       rules in the original Yes/No/Male-Female vocabulary.
 
     Encoding rules
     --------------
@@ -128,18 +149,28 @@ def load_real(
             f"not impute. Inspect the source before proceeding."
         )
 
-    y_class = _encode_categorical(df[target_col])
+    y_class, _ = _encode_categorical(df[target_col])
 
     feature_cols = [c for c in df.columns if c != target_col]
     columns = []
+    # numeric_stats and value_labels let cluster_description.py undo the
+    # standardisation (report age in years, not z-scores) and render decision
+    # rules in the original level names. Recording the mean/std here, at the
+    # single point where standardisation happens, keeps the inverse transform
+    # honest;
+    numeric_stats: dict = {}
+    value_labels: dict = {}
     for col in feature_cols:
         if pd.api.types.is_numeric_dtype(df[col]):
             x = df[col].to_numpy(dtype=float)
-            std = x.std()
-            x = (x - x.mean()) / std if std > 0 else x - x.mean()
+            mean, std = float(x.mean()), float(x.std())
+            numeric_stats[col] = {"mean": mean, "std": std}
+            x = (x - mean) / std if std > 0 else x - mean
             columns.append(x)
         else:
-            columns.append(_encode_categorical(df[col]).astype(float))
+            encoded, labels = _encode_categorical(df[col])
+            value_labels[col] = labels
+            columns.append(encoded.astype(float))
 
     X = np.column_stack(columns)
 
@@ -149,6 +180,9 @@ def load_real(
         "positive_mask": positive_mask,
         "n_positive": int(positive_mask.sum()),
         "n_total": int(len(y_class)),
+        # Inverse-transform metadata for interpretable cluster descriptions.
+        "numeric_stats": numeric_stats,   # {col: {"mean", "std"}}
+        "value_labels": value_labels,     # {col: {0: name, 1: name}}
     }
 
     return X, y_class, None, feature_cols, meta
